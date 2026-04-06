@@ -67,8 +67,10 @@ async function loadDashboard() {
       recentImports,
       lastRunDate: recs[0]?.calculationDate ?? null,
     };
-  } catch {
-    return { ok: false as const };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("Dashboard DB error:", message);
+    return { ok: false as const, error: message };
   }
 }
 
@@ -87,6 +89,11 @@ export default async function DashboardPage() {
             Set up PostgreSQL, run migrations, and seed the database to get started.
             See the project README for setup instructions.
           </p>
+          {data.error && (
+            <p className="text-xs text-[var(--c-warning-text-alt)] mt-2 font-mono opacity-75">
+              Error: {data.error}
+            </p>
+          )}
         </div>
       </div>
     );
