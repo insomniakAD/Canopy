@@ -1,0 +1,670 @@
+// ============================================================================
+// CANOPY — Winsome Purchasing Planning System
+// Database Schema (Module 1) — Revised
+// ============================================================================
+// This schema defines every table in the system.
+// Tables are organized into groups:
+//   1. Core Entities (SKUs, Factories, POs, Inventory, Sales)
+//   2. Amazon Data (Forecasts, Operational Metrics)
+//   3. Calculation Output (Demand Metrics, Reorder Recommendations)
+//   4. Users & Audit (Users, Override Logs)
+//   5. Data Import (Import Batches, Import Errors)
+//   6. Configuration (Tier Rules, Safety Stock, Lead Times, Containers, Seasonality)
+//
+// 19 tables total.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+/// SKU lifecycle status
+enum SkuStatus {
+  active
+  discontinued
+  seasonal
+}
+
+/// SKU tier — determines target inventory level
+/// A = top third (60 days), B = middle third (40 days), C = bottom third (30 days)
+enum SkuTier {
+  A
+  B
+  C
+}
+
+/// Factory origin country
+enum Country {
+  china
+  malaysia
+  thailand
+}
+
+/// Purchase order lifecycle
+enum PoStatus {
+  draft
+  ordered
+  in_production
+  on_water
+  at_port
+  received
+  cancelled
+}
+
+/// Container sizes used for ocean freight
+enum ContainerType {
+  forty_gp  // 40' General Purpose (~56 CBM)
+  forty_hq  // 40' High Cube (~68 CBM)
+}
+
+/// Where inventory is held
+enum LocationType {
+  domestic_warehouse
+  amazon_warehouse
+}
+
+/// Sales channel — where the consumer purchase happened
+/// Simplified: WDS can't distinguish DF/marketplace/wholesale, so all
+/// Woodinville warehouse shipments are "domestic". Amazon 1P is sell-through
+/// from Amazon warehouses. Amazon DI is Direct Import (separate flow).
+enum SalesChannel {
+  amazon_1p   // Amazon Vendor Central sell-through (was "amazon_retail")
+  amazon_di   // Amazon Direct Import
+  domestic    // All Woodinville warehouse shipments (DF + marketplace + wholesale)
+}
+
+/// Where imported data came from
+enum DataSource {
+  wds_export
+  amazon_report
+}
+
+/// Types of files that can be imported
+enum ImportType {
+  wds_inventory       // WDS inventory snapshot (ITEM#, ONHAND, IMPORT ON ORDER)
+  wds_monthly_sales   // WDS monthly sales pivot (SKUs as rows, months as columns)
+  amazon_sales        // Amazon Sales Diagnostic (Shipped Units by ASIN)
+  amazon_vendor_central // Amazon Vendor Central operational report (inventory, OOS%, etc.)
+  amazon_forecast     // Amazon Mean Forecast (48-week forward forecast by ASIN)
+  purchase_orders     // Open POs from WDS
+  asin_mapping        // One-time or update: links ASINs to Winsome SKU codes
+}
+
+/// Status of an import batch
+enum ImportStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+/// Types of errors found during import
+enum ImportErrorType {
+  missing_sku
+  invalid_value
+  duplicate
+  format_error
+  unmapped_asin
+}
+
+/// What a buyer can override
+enum OverrideType {
+  quantity
+  forecast
+  factory
+  timing
+  container
+}
+
+/// User roles in the system
+enum UserRole {
+  buyer
+  lead_reviewer
+  leadership
+  admin
+}
+
+/// Reorder recommendation decision
+enum ReorderDecision {
+  order
+  do_not_order
+  watch
+}
+
+// ============================================================================
+// CORE ENTITIES
+// ============================================================================
+
+/// Master product list. Every SKU in Winsome's catalog.
+/// This is the center of the data model — almost every other table references it.
+model Sku {
+  id               String    @id @default(uuid()) @db.Uuid
+  skuCode          String    @unique @map("sku_code")       // Winsome SKU number (e.g. "10727")
+  asin             String?   @unique                         // Amazon ASIN (e.g. "B08XYZ123")
+  name             String                                     // Product name
+  description      String?                                    // Product description
+  status           SkuStatus @default(active)
+  category         String?                                    // e.g. "desk", "bookshelf"
+  tier             SkuTier   @default(C)                      // Determines target inventory days
+  vendorCode       String?   @map("vendor_code")             // WDS VENDOR# reference
+  cbmPerCarton     Decimal?  @map("cbm_per_carton")          // Cubic meters per carton
+  unitsPerCarton   Int?      @map("units_per_carton")        // Units in one carton
+  weightPerCartonKg Decimal? @map("weight_per_carton_kg")    // Weight per carton (kg)
+  moq              Int?                                       // Minimum order quantity
+  unitCostUsd      Decimal?  @map("unit_cost_usd")           // Current landed cost per unit
+  defaultFactoryId String?   @map("default_factory_id") @db.Uuid  // Last factory used
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  defaultFactory         Factory?                @relation(fields: [defaultFactoryId], references: [id])
+  poLineItems            PoLineItem[]
+  inventorySnapshots     InventorySnapshot[]
+  salesHistory           SalesRecord[]
+  demandMetrics          DemandMetric[]
+  reorderRecommendations ReorderRecommendation[]
+  overrideLogs           OverrideLog[]
+  amazonForecasts        AmazonForecast[]
+  amazonMetrics          AmazonMetric[]
+
+  @@map("skus")
+}
+
+/// Factories where products are manufactured.
+model Factory {
+  id                      String  @id @default(uuid()) @db.Uuid
+  name                    String
+  country                 Country
+  contactName             String? @map("contact_name")
+  contactEmail            String? @map("contact_email")
+  leadTimeProductionDays  Int?    @map("lead_time_production_days")  // Override default
+  leadTimeTransitDays     Int?    @map("lead_time_transit_days")     // Override default
+  notes                   String?
+  isActive                Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  skus                    Sku[]
+  purchaseOrders          PurchaseOrder[]
+  reorderRecommendations  ReorderRecommendation[]
+
+  @@map("factories")
+}
+
+/// A purchase order placed with a factory.
+/// One PO goes to one factory, but may contain many SKUs (line items).
+model PurchaseOrder {
+  id                   String        @id @default(uuid()) @db.Uuid
+  poNumber             String        @unique @map("po_number")    // Winsome PO number
+  factoryId            String        @map("factory_id") @db.Uuid
+  status               PoStatus      @default(draft)
+  orderDate            DateTime?     @map("order_date") @db.Date
+  estimatedShipDate    DateTime?     @map("estimated_ship_date") @db.Date
+  estimatedArrivalDate DateTime?     @map("estimated_arrival_date") @db.Date
+  actualArrivalDate    DateTime?     @map("actual_arrival_date") @db.Date
+  totalCbm             Decimal?      @map("total_cbm")
+  totalCostUsd         Decimal?      @map("total_cost_usd")
+  containerType        ContainerType? @map("container_type")
+  containerCount       Int?          @map("container_count")
+  notes                String?
+  createdById          String?       @map("created_by_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  factory   Factory      @relation(fields: [factoryId], references: [id])
+  createdBy User?        @relation(fields: [createdById], references: [id])
+  lineItems PoLineItem[]
+
+  @@map("purchase_orders")
+}
+
+/// Individual SKU lines within a purchase order.
+/// If PO #1234 has 3 different products, there are 3 line items.
+model PoLineItem {
+  id              String  @id @default(uuid()) @db.Uuid
+  poId            String  @map("po_id") @db.Uuid
+  skuId           String  @map("sku_id") @db.Uuid
+  quantityOrdered Int     @map("quantity_ordered")
+  quantityReceived Int    @default(0) @map("quantity_received")
+  unitCostUsd     Decimal? @map("unit_cost_usd")
+  cartonCount     Int?    @map("carton_count")
+  lineCbm         Decimal? @map("line_cbm")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id])
+  sku           Sku           @relation(fields: [skuId], references: [id])
+
+  @@map("po_line_items")
+}
+
+/// Physical or logical locations where inventory is held.
+model InventoryLocation {
+  id           String       @id @default(uuid()) @db.Uuid
+  name         String                               // e.g. "Woodinville Warehouse", "Amazon 1P"
+  locationType LocationType @map("location_type")
+  isActive     Boolean      @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  inventorySnapshots InventorySnapshot[]
+
+  @@map("inventory_locations")
+}
+
+/// Point-in-time inventory record. Each import creates a snapshot.
+/// Snapshots let you see how inventory changed over time.
+model InventorySnapshot {
+  id                String   @id @default(uuid()) @db.Uuid
+  skuId             String   @map("sku_id") @db.Uuid
+  locationId        String   @map("location_id") @db.Uuid
+  quantityOnHand    Int      @map("quantity_on_hand")
+  quantityReserved  Int      @default(0) @map("quantity_reserved")
+  quantityAvailable Int      @map("quantity_available")    // on_hand minus reserved
+  snapshotDate      DateTime @map("snapshot_date") @db.Date
+  importBatchId     String?  @map("import_batch_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  sku         Sku               @relation(fields: [skuId], references: [id])
+  location    InventoryLocation @relation(fields: [locationId], references: [id])
+  importBatch ImportBatch?      @relation(fields: [importBatchId], references: [id])
+
+  @@index([skuId, snapshotDate])
+  @@index([snapshotDate])
+  @@map("inventory_snapshots")
+}
+
+/// Actual consumer shipments — the true demand signal.
+/// NOT Amazon PO requests. Only confirmed shipments/sales.
+///
+/// For WDS monthly sales: sale_date = first of month, period covers the full month.
+/// For Amazon sales reports: sale_date = start of range, period covers the custom range.
+/// The period dates let the demand engine correctly calculate weekly velocity
+/// regardless of whether data is daily, monthly, or a custom range.
+model SalesRecord {
+  id              String       @id @default(uuid()) @db.Uuid
+  skuId           String       @map("sku_id") @db.Uuid
+  channel         SalesChannel
+  saleDate        DateTime     @map("sale_date") @db.Date          // Canonical date for sorting
+  periodStartDate DateTime     @map("period_start_date") @db.Date  // Start of reporting period
+  periodEndDate   DateTime     @map("period_end_date") @db.Date    // End of reporting period
+  quantity        Int                                                // Units sold/shipped in period
+  revenueUsd      Decimal?     @map("revenue_usd")
+  costUsd         Decimal?     @map("cost_usd")                    // COGS if available (from Amazon)
+  source          DataSource                                        // Where this data came from
+  importBatchId   String?      @map("import_batch_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  sku         Sku          @relation(fields: [skuId], references: [id])
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id])
+
+  @@unique([skuId, channel, periodStartDate, periodEndDate], name: "unique_sales_period")
+  @@index([skuId, saleDate])
+  @@index([saleDate])
+  @@index([channel])
+  @@map("sales_history")
+}
+
+// ============================================================================
+// AMAZON DATA
+// ============================================================================
+
+/// Amazon's forward-looking demand forecast.
+/// Imported from Amazon Vendor Central Forecasting report.
+/// Each row = one ASIN + one week of forecast.
+/// The report provides 48 weeks of weekly forecasts (Mean Forecast).
+///
+/// This data is displayed alongside Canopy's own forecast so leadership
+/// can compare both systems side by side.
+model AmazonForecast {
+  id             String   @id @default(uuid()) @db.Uuid
+  skuId          String   @map("sku_id") @db.Uuid
+  weekNumber     Int      @map("week_number")           // 0–47 (position in forecast)
+  weekStartDate  DateTime @map("week_start_date") @db.Date
+  weekEndDate    DateTime @map("week_end_date") @db.Date
+  forecastUnits  Decimal  @map("forecast_units")         // Amazon's predicted units
+  snapshotDate   DateTime @map("snapshot_date") @db.Date  // When this forecast was imported
+  importBatchId  String?  @map("import_batch_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  sku         Sku          @relation(fields: [skuId], references: [id])
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id])
+
+  @@unique([skuId, weekStartDate, snapshotDate], name: "unique_forecast_week")
+  @@index([skuId, snapshotDate])
+  @@index([weekStartDate])
+  @@map("amazon_forecasts")
+}
+
+/// Amazon Vendor Central operational metrics.
+/// Imported from the Amazon inventory/operational health report.
+/// One row per ASIN per import snapshot.
+///
+/// Not directly used in V1 reorder calculations, but valuable for:
+/// - Monitoring OOS rate and fill rate
+/// - Tracking aged inventory at Amazon
+/// - Understanding Amazon's measured lead time vs our assumptions
+model AmazonMetric {
+  id                   String   @id @default(uuid()) @db.Uuid
+  skuId                String   @map("sku_id") @db.Uuid
+  snapshotDate         DateTime @map("snapshot_date") @db.Date
+  oosRate              Decimal? @map("oos_rate")                  // Sourceable Product OOS %
+  confirmationRate     Decimal? @map("confirmation_rate")         // Vendor Confirmation %
+  netReceivedUnits     Int?     @map("net_received_units")        // Units Amazon received
+  openPoQuantity       Int?     @map("open_po_quantity")          // Amazon's pending PO qty
+  receiveFillRate      Decimal? @map("receive_fill_rate")         // Receive Fill %
+  vendorLeadTimeDays   Int?     @map("vendor_lead_time_days")     // Amazon's measured lead time
+  unfilledUnits        Int?     @map("unfilled_units")            // Unfilled Customer Ordered Units
+  agedInventoryValue   Decimal? @map("aged_inventory_value")      // Aged 90+ Days $
+  agedInventoryUnits   Int?     @map("aged_inventory_units")      // Aged 90+ Days units
+  sellableValue        Decimal? @map("sellable_value")            // Sellable On Hand $
+  unsellableUnits      Int?     @map("unsellable_units")          // Unsellable On Hand units
+  importBatchId        String?  @map("import_batch_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  sku         Sku          @relation(fields: [skuId], references: [id])
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id])
+
+  @@unique([skuId, snapshotDate], name: "unique_amazon_metric")
+  @@index([skuId])
+  @@map("amazon_metrics")
+}
+
+// ============================================================================
+// CALCULATION OUTPUT
+// ============================================================================
+
+/// Calculated demand velocity per SKU.
+/// Rebuilt each time new sales data is imported.
+model DemandMetric {
+  id                          String   @id @default(uuid()) @db.Uuid
+  skuId                       String   @map("sku_id") @db.Uuid
+  periodWeeks                 Int      @map("period_weeks")         // 13, 26, or 52
+  weeklyVelocity              Decimal  @map("weekly_velocity")      // Avg units/week
+  totalUnits                  Int      @map("total_units")          // Total sold in period
+  startDate                   DateTime @map("start_date") @db.Date
+  endDate                     DateTime @map("end_date") @db.Date
+  blendedVelocity             Decimal? @map("blended_velocity")     // Weighted avg across periods
+  seasonallyAdjustedVelocity  Decimal? @map("seasonally_adjusted_velocity")
+
+  calculatedAt DateTime @default(now()) @map("calculated_at")
+
+  // Relationships
+  sku Sku @relation(fields: [skuId], references: [id])
+
+  @@index([skuId])
+  @@map("demand_metrics")
+}
+
+/// The system's purchasing recommendation for each SKU.
+/// One row per SKU per calculation run.
+/// The "explanation" field powers the "Why this recommendation?" panel.
+///
+/// Includes both Canopy's forecast AND Amazon's forecast side by side,
+/// so leadership can compare the two systems.
+model ReorderRecommendation {
+  id                          String          @id @default(uuid()) @db.Uuid
+  skuId                       String          @map("sku_id") @db.Uuid
+  calculationDate             DateTime        @map("calculation_date") @db.Date
+  decision                    ReorderDecision
+
+  // --- Canopy's demand calculation ---
+  weeklyDemand                Decimal         @map("weekly_demand")
+  onHandInventory             Int             @map("on_hand_inventory")
+  inboundInventory            Int             @map("inbound_inventory")
+  projectedInventoryAtArrival Int             @map("projected_inventory_at_arrival")
+  weeksOfSupply               Decimal         @map("weeks_of_supply")
+  targetWeeksOfSupply         Decimal         @map("target_weeks_of_supply")
+  leadTimeDays                Int             @map("lead_time_days")
+  leadTimeDemand              Int             @map("lead_time_demand")
+  safetyStock                 Int             @map("safety_stock")
+  requiredInventoryLevel      Int             @map("required_inventory_level")
+  reorderQuantity             Int             @map("reorder_quantity")       // Raw calculated
+  adjustedQuantity            Int             @map("adjusted_quantity")      // After MOQ/container
+
+  // --- Amazon's forecast (for comparison) ---
+  amazonForecastWeekly        Decimal?        @map("amazon_forecast_weekly")      // Amazon's avg weekly demand
+  amazonForecastOrderQty      Int?            @map("amazon_forecast_order_qty")   // Order qty using Amazon's numbers
+  forecastVariancePct         Decimal?        @map("forecast_variance_pct")       // % difference: Canopy vs Amazon
+
+  // --- Operational details ---
+  recommendedFactoryId        String?         @map("recommended_factory_id") @db.Uuid
+  recommendedOrderByDate      DateTime?       @map("recommended_order_by_date") @db.Date
+  projectedStockoutDate       DateTime?       @map("projected_stockout_date") @db.Date
+  containerCbmImpact          Decimal?        @map("container_cbm_impact")
+  explanation                 String                                          // Plain English
+  isCurrent                   Boolean         @default(true) @map("is_current")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  sku              Sku      @relation(fields: [skuId], references: [id])
+  recommendedFactory Factory? @relation(fields: [recommendedFactoryId], references: [id])
+
+  @@index([skuId, isCurrent])
+  @@index([calculationDate])
+  @@index([decision])
+  @@map("reorder_recommendations")
+}
+
+// ============================================================================
+// USERS & AUDIT
+// ============================================================================
+
+/// System users. Roles determine what they can do.
+model User {
+  id       String   @id @default(uuid()) @db.Uuid
+  email    String   @unique
+  name     String
+  role     UserRole @default(buyer)
+  isActive Boolean  @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  purchaseOrdersCreated PurchaseOrder[]
+  overridesMade         OverrideLog[]    @relation("OverrideMadeBy")
+  overridesApproved     OverrideLog[]    @relation("OverrideApprovedBy")
+  importBatches         ImportBatch[]
+  skuTierRuleUpdates    SkuTierRule[]
+  safetyStockRuleUpdates SafetyStockRule[]
+  leadTimeRuleUpdates   LeadTimeRule[]
+  containerRuleUpdates  ContainerRule[]
+  seasonalityUpdates    SeasonalityFactor[]
+
+  @@map("users")
+}
+
+/// Audit log for every buyer override.
+/// Reason is required — leadership must see why recommendations were changed.
+model OverrideLog {
+  id            String       @id @default(uuid()) @db.Uuid
+  skuId         String       @map("sku_id") @db.Uuid
+  userId        String       @map("user_id") @db.Uuid
+  overrideType  OverrideType @map("override_type")
+  originalValue String       @map("original_value")    // What the system recommended
+  overrideValue String       @map("override_value")    // What the buyer changed it to
+  reason        String                                   // Required — why they changed it
+  approvedById  String?      @map("approved_by_id") @db.Uuid
+  approvedAt    DateTime?    @map("approved_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  sku        Sku   @relation(fields: [skuId], references: [id])
+  user       User  @relation("OverrideMadeBy", fields: [userId], references: [id])
+  approvedBy User? @relation("OverrideApprovedBy", fields: [approvedById], references: [id])
+
+  @@index([skuId])
+  @@index([userId])
+  @@map("override_logs")
+}
+
+// ============================================================================
+// DATA IMPORT
+// ============================================================================
+
+/// Tracks every file upload. The file_hash prevents duplicate imports.
+model ImportBatch {
+  id            String       @id @default(uuid()) @db.Uuid
+  importType    ImportType   @map("import_type")
+  fileName      String       @map("file_name")
+  fileHash      String       @map("file_hash")          // SHA-256 to detect duplicates
+  rowCount      Int          @default(0) @map("row_count")
+  rowsImported  Int          @default(0) @map("rows_imported")
+  rowsSkipped   Int          @default(0) @map("rows_skipped")
+  rowsErrored   Int          @default(0) @map("rows_errored")
+  status        ImportStatus @default(pending)
+  errorSummary  String?      @map("error_summary")
+  uploadedById  String?      @map("uploaded_by_id") @db.Uuid
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+
+  // Relationships
+  uploadedBy         User?               @relation(fields: [uploadedById], references: [id])
+  errors             ImportError[]
+  inventorySnapshots InventorySnapshot[]
+  salesRecords       SalesRecord[]
+  amazonForecasts    AmazonForecast[]
+  amazonMetrics      AmazonMetric[]
+
+  @@map("import_batches")
+}
+
+/// Detailed errors from a file import, so users can fix their data.
+model ImportError {
+  id           String          @id @default(uuid()) @db.Uuid
+  batchId      String          @map("batch_id") @db.Uuid
+  rowNumber    Int             @map("row_number")
+  fieldName    String?         @map("field_name")
+  errorType    ImportErrorType @map("error_type")
+  errorMessage String          @map("error_message")   // Plain English
+  rawValue     String?         @map("raw_value")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relationships
+  batch ImportBatch @relation(fields: [batchId], references: [id])
+
+  @@index([batchId])
+  @@map("import_errors")
+}
+
+// ============================================================================
+// CONFIGURATION — Editable business rules (no code changes needed)
+// ============================================================================
+
+/// Target inventory days by SKU tier. Admin-editable.
+/// A = 60 days, B = 40 days, C = 30 days
+model SkuTierRule {
+  id                  String  @id @default(uuid()) @db.Uuid
+  tier                SkuTier @unique
+  targetDaysOfSupply  Int     @map("target_days_of_supply")
+  description         String?
+
+  updatedById String?   @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relationships
+  updatedBy User? @relation(fields: [updatedById], references: [id])
+
+  @@map("sku_tier_rules")
+}
+
+/// Safety stock buffer by tier. Added on top of target inventory.
+model SafetyStockRule {
+  id              String  @id @default(uuid()) @db.Uuid
+  tier            SkuTier @unique
+  safetyStockDays Int     @map("safety_stock_days")
+  description     String?
+
+  updatedById String?   @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relationships
+  updatedBy User? @relation(fields: [updatedById], references: [id])
+
+  @@map("safety_stock_rules")
+}
+
+/// Default lead times by origin country.
+/// Individual factories can override these values.
+model LeadTimeRule {
+  id                    String  @id @default(uuid()) @db.Uuid
+  country               Country @unique
+  poToProductionDays    Int     @map("po_to_production_days")
+  productionDays        Int     @map("production_days")
+  transitDays           Int     @map("transit_days")
+  portProcessingDays    Int     @map("port_processing_days")
+  totalLeadTimeDays     Int     @map("total_lead_time_days")    // Sum of above
+
+  updatedById String?   @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relationships
+  updatedBy User? @relation(fields: [updatedById], references: [id])
+
+  @@map("lead_time_rules")
+}
+
+/// Container capacity and cost. Only 40GP and 40HQ.
+model ContainerRule {
+  id              String        @id @default(uuid()) @db.Uuid
+  containerType   ContainerType @unique @map("container_type")
+  maxCbm          Decimal       @map("max_cbm")
+  maxWeightKg     Decimal       @map("max_weight_kg")
+  costEstimateUsd Decimal?      @map("cost_estimate_usd")
+
+  updatedById String?   @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relationships
+  updatedBy User? @relation(fields: [updatedById], references: [id])
+
+  @@map("container_rules")
+}
+
+/// Monthly seasonality multipliers.
+/// 1.0 = normal demand. 1.3 = 30% above normal. 0.8 = 20% below normal.
+/// Starts at 1.0 for all months — you fill these in based on your history.
+model SeasonalityFactor {
+  id          String  @id @default(uuid()) @db.Uuid
+  month       Int     @unique                           // 1 = January, 12 = December
+  factor      Decimal @default(1.0)                     // Multiplier
+  description String?                                    // e.g. "Q4 holiday ramp"
+
+  updatedById String?   @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relationships
+  updatedBy User? @relation(fields: [updatedById], references: [id])
+
+  @@map("seasonality_factors")
+}

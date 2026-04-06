@@ -1,26 +1,133 @@
 @import "tailwindcss";
 
+/* ========================================================================
+   CANOPY DESIGN TOKENS
+   All colors in the app reference these variables.
+   To change the color scheme, edit the values here — nothing else changes.
+   ======================================================================== */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Layout */
+  --c-page-bg: #f8fafc;
+  --c-card-bg: #ffffff;
+
+  /* Borders */
+  --c-border: #e2e8f0;
+  --c-border-row: #f1f5f9;
+
+  /* Text */
+  --c-text-primary: #1a1a2e;
+  --c-text-secondary: #64748b;
+  --c-text-tertiary: #94a3b8;
+  --c-text-body: #475569;
+
+  /* Accent */
+  --c-accent: #3b82f6;
+  --c-accent-hover: #2563eb;
+
+  /* Status: Success */
+  --c-success: #10b981;
+  --c-success-text: #065f46;
+  --c-success-bg: #d1fae5;
+  --c-success-bg-light: #f0fdf4;
+
+  /* Status: Error */
+  --c-error: #ef4444;
+  --c-error-text: #991b1b;
+  --c-error-text-mid: #b91c1c;
+  --c-error-text-dark: #7f1d1d;
+  --c-error-bg: #fee2e2;
+  --c-error-bg-light: #fef2f2;
+  --c-error-border: #fca5a5;
+
+  /* Status: Warning */
+  --c-warning: #f59e0b;
+  --c-warning-text: #92400e;
+  --c-warning-text-alt: #a16207;
+  --c-warning-bg: #fef3c7;
+  --c-warning-border: #fde68a;
+
+  /* Status: Info / Order */
+  --c-info-text: #1e40af;
+  --c-info-bg: #dbeafe;
+  --c-info-bg-light: #eff6ff;
+
+  /* Sidebar */
+  --c-sidebar-bg: #1a1a2e;
+  --c-sidebar-border: #2d2d4a;
+  --c-sidebar-text: #e2e8f0;
+  --c-sidebar-active: #3b82f6;
+
+  /* Form controls */
+  --c-input-bg: #ffffff;
+}
+
+.dark {
+  /* Layout */
+  --c-page-bg: #0f172a;
+  --c-card-bg: #1e293b;
+
+  /* Borders */
+  --c-border: #334155;
+  --c-border-row: #283548;
+
+  /* Text */
+  --c-text-primary: #f1f5f9;
+  --c-text-secondary: #94a3b8;
+  --c-text-tertiary: #64748b;
+  --c-text-body: #cbd5e1;
+
+  /* Accent */
+  --c-accent: #60a5fa;
+  --c-accent-hover: #3b82f6;
+
+  /* Status: Success */
+  --c-success: #34d399;
+  --c-success-text: #a7f3d0;
+  --c-success-bg: #064e3b;
+  --c-success-bg-light: #022c22;
+
+  /* Status: Error */
+  --c-error: #f87171;
+  --c-error-text: #fecaca;
+  --c-error-text-mid: #fca5a5;
+  --c-error-text-dark: #fecaca;
+  --c-error-bg: #450a0a;
+  --c-error-bg-light: #3b0a0a;
+  --c-error-border: #7f1d1d;
+
+  /* Status: Warning */
+  --c-warning: #fbbf24;
+  --c-warning-text: #fde68a;
+  --c-warning-text-alt: #fcd34d;
+  --c-warning-bg: #451a03;
+  --c-warning-border: #78350f;
+
+  /* Status: Info / Order */
+  --c-info-text: #93c5fd;
+  --c-info-bg: #1e3a5f;
+  --c-info-bg-light: #172554;
+
+  /* Sidebar */
+  --c-sidebar-bg: #0a0a1a;
+  --c-sidebar-border: #1e1e3a;
+  --c-sidebar-text: #cbd5e1;
+  --c-sidebar-active: #3b82f6;
+
+  /* Form controls */
+  --c-input-bg: #1e293b;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--c-page-bg);
+  --color-foreground: var(--c-text-primary);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--c-page-bg);
+  color: var(--c-text-primary);
+  font-family: var(--font-sans, Arial, Helvetica, sans-serif);
+  transition: background-color 0.2s, color 0.2s;
 }
