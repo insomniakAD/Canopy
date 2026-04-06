@@ -5,7 +5,7 @@
 // Run with: npx prisma db seed
 //
 // What this does:
-//   1. Creates the 3 SKU tier rules (A=60, B=40, C=30 days)
+//   1. Creates the 3 SKU tier rules (A=60, B=50, C=40 days)
 //   2. Creates safety stock rules per tier
 //   3. Creates lead time rules per country (China, Malaysia, Thailand)
 //   4. Creates container rules (40GP, 40HQ)
@@ -37,13 +37,13 @@ async function main() {
     },
     {
       tier: SkuTier.B,
-      targetDaysOfSupply: 40,
-      description: "Middle third of SKUs by revenue. Keep 40 days of inventory.",
+      targetDaysOfSupply: 50,
+      description: "Middle third of SKUs by revenue. Keep 50 days of inventory.",
     },
     {
       tier: SkuTier.C,
-      targetDaysOfSupply: 30,
-      description: "Bottom third of SKUs by revenue. Keep 30 days of inventory.",
+      targetDaysOfSupply: 40,
+      description: "Bottom third of SKUs by revenue. Keep 40 days of inventory.",
     },
   ];
 

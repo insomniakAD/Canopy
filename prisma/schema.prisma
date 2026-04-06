@@ -582,7 +582,7 @@ model ImportError {
 // ============================================================================
 
 /// Target inventory days by SKU tier. Admin-editable.
-/// A = 60 days, B = 40 days, C = 30 days
+/// A = 60 days, B = 50 days, C = 40 days
 model SkuTierRule {
   id                  String  @id @default(uuid()) @db.Uuid
   tier                SkuTier @unique
