@@ -31,8 +31,24 @@ async function loadHistory() {
   }
 }
 
+async function loadCompletedTypes(): Promise<string[]> {
+  try {
+    const completed = await db.importBatch.findMany({
+      where: { status: "completed" },
+      select: { importType: true },
+      distinct: ["importType"],
+    });
+    return completed.map((b) => b.importType);
+  } catch {
+    return [];
+  }
+}
+
 export default async function ImportPage() {
-  const data = await loadHistory();
+  const [data, completedTypes] = await Promise.all([
+    loadHistory(),
+    loadCompletedTypes(),
+  ]);
 
   return (
     <div>
@@ -41,7 +57,7 @@ export default async function ImportPage() {
         Upload Excel or CSV files from WDS and Amazon to keep Canopy&apos;s data current.
       </p>
 
-      <ImportClient />
+      <ImportClient completedTypes={completedTypes} />
 
       {/* Import guide */}
       <Card title="Supported File Types" className="mt-8 mb-8">

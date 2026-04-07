@@ -20,16 +20,19 @@ async function loadSettings() {
     return {
       ok: true as const,
       tierRules: tierRules.map((r) => ({
+        id: r.id,
         tier: r.tier,
         targetDaysOfSupply: r.targetDaysOfSupply,
         description: r.description,
       })),
       safetyRules: safetyRules.map((r) => ({
+        id: r.id,
         tier: r.tier,
         safetyStockDays: r.safetyStockDays,
         description: r.description,
       })),
       leadTimeRules: leadTimeRules.map((r) => ({
+        id: r.id,
         country: r.country,
         poToProductionDays: r.poToProductionDays,
         productionDays: r.productionDays,
@@ -38,12 +41,14 @@ async function loadSettings() {
         totalLeadTimeDays: r.totalLeadTimeDays,
       })),
       containerRules: containerRules.map((r) => ({
+        id: r.id,
         containerType: r.containerType,
         maxCbm: Number(r.maxCbm),
         maxWeightKg: Number(r.maxWeightKg),
         costEstimateUsd: r.costEstimateUsd ? Number(r.costEstimateUsd) : null,
       })),
       seasonality: seasonality.map((s) => ({
+        id: s.id,
         month: s.month,
         monthName: MONTH_NAMES[s.month - 1] ?? `Month ${s.month}`,
         factor: Number(s.factor),

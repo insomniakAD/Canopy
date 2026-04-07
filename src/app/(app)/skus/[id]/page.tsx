@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { Card, Badge, TierBadge, StatCard } from "@/components/ui";
+import { CollapsibleSection } from "@/components/collapsible-section";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -189,9 +190,106 @@ export default async function SkuDetailPage({
         {/* ───────── WHY THIS RECOMMENDATION ───────── */}
         {rec && (
           <Card title="Why This Recommendation" className="lg:col-span-2">
-            <pre className="text-sm text-[var(--c-text-body)] whitespace-pre-wrap font-sans leading-relaxed">
-              {rec.explanation}
-            </pre>
+            {/* Decision Banner */}
+            {rec.decision === "order" && (
+              <div className="rounded-lg bg-[var(--c-success-bg)] px-4 py-3 mb-4">
+                <p className="text-sm font-semibold text-[var(--c-success-text)]">
+                  Order {fmtInt(rec.adjustedQuantity)} units
+                  {rec.recommendedFactory ? ` from ${rec.recommendedFactory.name}` : ""}
+                </p>
+              </div>
+            )}
+            {rec.decision === "watch" && (
+              <div className="rounded-lg bg-[var(--c-warning-bg)] px-4 py-3 mb-4">
+                <p className="text-sm font-semibold text-[var(--c-warning-text)]">
+                  Watch — no order needed right now
+                </p>
+              </div>
+            )}
+            {rec.decision === "do_not_order" && (
+              <div className="rounded-lg bg-[var(--c-border-row)] px-4 py-3 mb-4">
+                <p className="text-sm font-semibold text-[var(--c-text-secondary)]">
+                  Do Not Order — sufficient stock
+                </p>
+              </div>
+            )}
+
+            {/* Key Factors */}
+            <ul className="space-y-2 text-sm text-[var(--c-text-body)] mb-4">
+              <li className="flex items-start gap-2">
+                <span className="mt-1 shrink-0 h-1.5 w-1.5 rounded-full bg-[var(--c-text-tertiary)]" />
+                <span>
+                  Current supply:{" "}
+                  <strong
+                    className={
+                      Number(rec.weeksOfSupply) < Number(rec.targetWeeksOfSupply)
+                        ? "text-[var(--c-error)]"
+                        : ""
+                    }
+                  >
+                    {fmtNum(Number(rec.weeksOfSupply))} weeks
+                  </strong>{" "}
+                  (target: {fmtNum(Number(rec.targetWeeksOfSupply))} weeks)
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-1 shrink-0 h-1.5 w-1.5 rounded-full bg-[var(--c-text-tertiary)]" />
+                <span>
+                  On hand: <strong>{fmtInt(rec.onHandInventory)} units</strong> + {fmtInt(rec.inboundInventory)} inbound
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-1 shrink-0 h-1.5 w-1.5 rounded-full bg-[var(--c-text-tertiary)]" />
+                <span>
+                  Weekly demand: <strong>{fmtNum(Number(rec.weeklyDemand))} units/week</strong>
+                </span>
+              </li>
+              {rec.projectedStockoutDate && (
+                <li className="flex items-start gap-2">
+                  <span className="mt-1 shrink-0 h-1.5 w-1.5 rounded-full bg-[var(--c-error)]" />
+                  <span className="text-[var(--c-error)] font-semibold">
+                    Projected stockout: {fmtDate(rec.projectedStockoutDate)}
+                  </span>
+                </li>
+              )}
+              {rec.recommendedOrderByDate && (
+                <li className="flex items-start gap-2">
+                  <span className="mt-1 shrink-0 h-1.5 w-1.5 rounded-full bg-[var(--c-text-tertiary)]" />
+                  <span>
+                    Order by <strong>{fmtDate(rec.recommendedOrderByDate)}</strong> to avoid stockout
+                  </span>
+                </li>
+              )}
+              {rec.forecastVariancePct != null && (
+                <li className="flex items-start gap-2">
+                  <span
+                    className={`mt-1 shrink-0 h-1.5 w-1.5 rounded-full ${
+                      Math.abs(Number(rec.forecastVariancePct)) > 20
+                        ? "bg-[var(--c-warning)]"
+                        : "bg-[var(--c-text-tertiary)]"
+                    }`}
+                  />
+                  <span
+                    className={
+                      Math.abs(Number(rec.forecastVariancePct)) > 20
+                        ? "text-[var(--c-warning-text)]"
+                        : ""
+                    }
+                  >
+                    Amazon forecast variance: <strong>{fmtPct(Number(rec.forecastVariancePct))}</strong>
+                  </span>
+                </li>
+              )}
+            </ul>
+
+            {/* Full Analysis (collapsible) */}
+            <div className="border-t border-[var(--c-border)] pt-4">
+              <CollapsibleSection title="Show detailed analysis" defaultOpen={false}>
+                <pre className="text-sm text-[var(--c-text-body)] whitespace-pre-wrap font-mono leading-relaxed bg-[var(--c-page-bg)] rounded-lg px-4 py-3 border border-[var(--c-border)]">
+                  {rec.explanation}
+                </pre>
+              </CollapsibleSection>
+            </div>
           </Card>
         )}
 

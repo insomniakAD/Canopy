@@ -89,7 +89,7 @@ export default async function DashboardPage() {
             Set up PostgreSQL, run migrations, and seed the database to get started.
             See the project README for setup instructions.
           </p>
-          {data.error && (
+          {data.error && process.env.NODE_ENV !== "production" && (
             <p className="text-xs text-[var(--c-warning-text-alt)] mt-2 font-mono opacity-75">
               Error: {data.error}
             </p>

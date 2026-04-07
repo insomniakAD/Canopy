@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { Card, StatCard, Badge, TierBadge } from "@/components/ui";
 import Link from "next/link";
+import { ContainerExport } from "./container-export";
 
 // Helpers -----------------------------------------------------------------
 
@@ -171,7 +172,10 @@ export default async function ContainerPlanningPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-[var(--c-text-primary)] mb-1">Container Planning</h1>
+      <div className="flex items-start justify-between mb-1">
+        <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">Container Planning</h1>
+        <ContainerExport plans={plans} />
+      </div>
       <p className="text-sm text-[var(--c-text-secondary)] mb-6">
         How SKU orders group into containers by factory. Based on current &ldquo;Order&rdquo; recommendations.
       </p>

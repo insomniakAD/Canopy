@@ -4,13 +4,13 @@ import { useState, useRef, useCallback } from "react";
 import { Badge } from "@/components/ui";
 
 const IMPORT_TYPES = [
-  { value: "wds_inventory", label: "WDS Inventory" },
-  { value: "wds_monthly_sales", label: "WDS Monthly Sales" },
-  { value: "amazon_sales", label: "Amazon Sales Diagnostic" },
-  { value: "amazon_vendor_central", label: "Amazon Vendor Central" },
-  { value: "amazon_forecast", label: "Amazon Forecasting" },
-  { value: "purchase_orders", label: "Purchase Orders" },
-  { value: "asin_mapping", label: "ASIN Mapping" },
+  { value: "wds_inventory", label: "WDS Inventory", requires: [] as string[] },
+  { value: "asin_mapping", label: "ASIN Mapping", requires: ["wds_inventory"] },
+  { value: "wds_monthly_sales", label: "WDS Monthly Sales", requires: ["wds_inventory"] },
+  { value: "amazon_sales", label: "Amazon Sales Diagnostic", requires: ["wds_inventory", "asin_mapping"] },
+  { value: "amazon_vendor_central", label: "Amazon Vendor Central", requires: ["wds_inventory", "asin_mapping"] },
+  { value: "amazon_forecast", label: "Amazon Forecasting", requires: ["wds_inventory", "asin_mapping"] },
+  { value: "purchase_orders", label: "Purchase Orders", requires: ["wds_inventory"] },
 ] as const;
 
 interface ImportResult {
@@ -33,7 +33,20 @@ interface ImportResult {
   }>;
 }
 
-export function FileUploader({ onImportComplete }: { onImportComplete?: () => void }) {
+function isTypeEnabled(
+  importType: (typeof IMPORT_TYPES)[number],
+  completedTypes: string[],
+): boolean {
+  return importType.requires.every((req) => completedTypes.includes(req));
+}
+
+export function FileUploader({
+  completedTypes = [],
+  onImportComplete,
+}: {
+  completedTypes?: string[];
+  onImportComplete?: () => void;
+}) {
   const [importType, setImportType] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -42,11 +55,21 @@ export function FileUploader({ onImportComplete }: { onImportComplete?: () => vo
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+  const validateFile = (f: File): boolean => {
+    if (f.size > MAX_FILE_SIZE) {
+      setError(`File too large (${(f.size / 1024 / 1024).toFixed(1)} MB). Maximum size is 10 MB.`);
+      return false;
+    }
+    return true;
+  };
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
     const dropped = e.dataTransfer.files[0];
-    if (dropped) setFile(dropped);
+    if (dropped && validateFile(dropped)) setFile(dropped);
   }, []);
 
   const handleSubmit = async () => {
@@ -96,11 +119,14 @@ export function FileUploader({ onImportComplete }: { onImportComplete?: () => vo
           className="w-full border border-[var(--c-border)] rounded-lg px-3 py-2 text-sm bg-[var(--c-card-bg)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)] focus:border-transparent"
         >
           <option value="">Select import type…</option>
-          {IMPORT_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
+          {IMPORT_TYPES.map((t) => {
+            const enabled = isTypeEnabled(t, completedTypes);
+            return (
+              <option key={t.value} value={t.value} disabled={!enabled}>
+                {t.label}{!enabled ? " (requires earlier imports)" : ""}
+              </option>
+            );
+          })}
         </select>
       </div>
 
@@ -122,7 +148,7 @@ export function FileUploader({ onImportComplete }: { onImportComplete?: () => vo
           ref={fileRef}
           type="file"
           accept=".xlsx,.xls,.csv"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f && validateFile(f)) setFile(f); }}
           className="hidden"
         />
         {file ? (
@@ -138,7 +164,7 @@ export function FileUploader({ onImportComplete }: { onImportComplete?: () => vo
             <p className="text-sm text-[var(--c-text-secondary)]">
               Drag and drop a file here, or <span className="text-[var(--c-accent)] font-medium">click to browse</span>
             </p>
-            <p className="text-xs text-[var(--c-text-tertiary)] mt-1">Accepts .xlsx, .xls, or .csv</p>
+            <p className="text-xs text-[var(--c-text-tertiary)] mt-1">Accepts .xlsx, .xls, or .csv (max 10 MB)</p>
           </div>
         )}
       </div>

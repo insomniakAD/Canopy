@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { Card, StatCard, Badge, TierBadge } from "@/components/ui";
 import Link from "next/link";
+import { StockoutExport, CountryExport } from "./report-export";
 
 // Helpers -----------------------------------------------------------------
 
@@ -206,6 +207,10 @@ export default async function ReportsPage() {
           {byCountry.length === 0 ? (
             <p className="text-sm text-[var(--c-text-tertiary)]">No orders to display.</p>
           ) : (
+            <>
+            <div className="flex justify-end mb-3">
+              <CountryExport rows={byCountry} />
+            </div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[var(--c-text-secondary)] text-xs uppercase tracking-wide border-b border-[var(--c-border)]">
@@ -228,6 +233,7 @@ export default async function ReportsPage() {
                 ))}
               </tbody>
             </table>
+            </>
           )}
         </Card>
       </div>
@@ -239,6 +245,9 @@ export default async function ReportsPage() {
           subtitle="Order-recommended SKUs with the lowest weeks of supply"
           className="mb-6"
         >
+          <div className="flex justify-end mb-3">
+            <StockoutExport risks={topStockoutRisks} />
+          </div>
           <div className="overflow-x-auto -mx-6">
             <table className="w-full text-sm">
               <thead>

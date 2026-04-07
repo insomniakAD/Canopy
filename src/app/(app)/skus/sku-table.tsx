@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Badge, TierBadge } from "@/components/ui";
+import { ExportButton } from "@/components/export-button";
 
 interface Rec {
   id: string;
@@ -58,6 +59,23 @@ export function SkuTable({ recommendations }: { recommendations: Rec[] }) {
     });
   }, [recommendations, filter, search, tierFilter]);
 
+  const exportData = useMemo(() => {
+    return filtered.map((r) => ({
+      SKU: r.skuCode,
+      Name: r.skuName,
+      Tier: r.tier,
+      Decision: r.decision,
+      "Weekly Demand": r.weeklyDemand.toFixed(1),
+      "On Hand": r.onHandInventory,
+      Inbound: r.inboundInventory,
+      "Weeks of Supply": r.weeksOfSupply.toFixed(1),
+      "Order Qty": r.adjustedQuantity > 0 ? r.adjustedQuantity : "",
+      Factory: r.factory ?? "",
+      "Order By": r.orderByDate ?? "",
+      "Stockout Date": r.projectedStockoutDate ?? "",
+    }));
+  }, [filtered]);
+
   return (
     <div className="bg-[var(--c-card-bg)] rounded-xl border border-[var(--c-border)] shadow-sm">
       {/* Filters bar */}
@@ -108,6 +126,7 @@ export function SkuTable({ recommendations }: { recommendations: Rec[] }) {
         <span className="text-xs text-[var(--c-text-tertiary)] ml-auto">
           {filtered.length} of {recommendations.length} SKUs
         </span>
+        <ExportButton data={exportData} filename="canopy-sku-recommendations.csv" />
       </div>
 
       {/* Table */}

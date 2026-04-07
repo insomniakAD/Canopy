@@ -18,10 +18,12 @@ interface RunResult {
 
 export function RunEngineButton() {
   const [running, setRunning] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
   const router = useRouter();
 
   const handleRun = async () => {
+    setConfirming(false);
     setRunning(true);
     setResult(null);
 
@@ -43,14 +45,37 @@ export function RunEngineButton() {
   };
 
   return (
-    <div>
+    <div className="relative">
       <button
-        onClick={handleRun}
+        onClick={() => setConfirming(true)}
         disabled={running}
         className="px-5 py-2.5 bg-[var(--c-accent)] text-white text-sm font-medium rounded-lg hover:bg-[var(--c-accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {running ? "Running Engine\u2026" : "Run Recommendations"}
       </button>
+
+      {confirming && (
+        <div className="absolute right-0 top-12 z-20 w-80 bg-[var(--c-card-bg)] border border-[var(--c-border)] rounded-xl shadow-lg px-5 py-4">
+          <p className="text-sm font-semibold text-[var(--c-text-primary)] mb-1">Recalculate all recommendations?</p>
+          <p className="text-xs text-[var(--c-text-secondary)] mb-4">
+            This will replace your current recommendations with a fresh calculation based on the latest data.
+          </p>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => setConfirming(false)}
+              className="px-3 py-1.5 text-sm text-[var(--c-text-secondary)] hover:text-[var(--c-text-primary)] rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRun}
+              className="px-4 py-1.5 text-sm font-medium bg-[var(--c-accent)] text-white rounded-lg hover:bg-[var(--c-accent-hover)] transition-colors"
+            >
+              Yes, Run Engine
+            </button>
+          </div>
+        </div>
+      )}
 
       {result && (
         <div className={`mt-3 rounded-lg px-4 py-3 text-sm ${
