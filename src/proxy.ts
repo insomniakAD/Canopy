@@ -8,6 +8,8 @@ export async function proxy(request: NextRequest) {
     secret: process.env.AUTH_SECRET,
   });
 
+  console.log("[proxy]", request.nextUrl.pathname, "token:", token ? "present" : "missing", "AUTH_SECRET set:", !!process.env.AUTH_SECRET);
+
   const isLoginPage = request.nextUrl.pathname === "/login";
 
   if (!token && !isLoginPage) {
