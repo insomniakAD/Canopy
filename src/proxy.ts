@@ -1,28 +1,26 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { getToken } from "next-auth/jwt";
+import NextAuth from "next-auth";
+import authConfig from "@/auth.config";
 
-export async function proxy(request: NextRequest) {
-  const token = await getToken({
-    req: request,
-    secret: process.env.AUTH_SECRET,
-  });
+// Use NextAuth's own auth wrapper — this correctly reads the JWT cookie
+// using the same salt/cookie-name that the credentials handler sets.
+const { auth } = NextAuth(authConfig);
 
-  console.log("[proxy]", request.nextUrl.pathname, "token:", token ? "present" : "missing", "AUTH_SECRET set:", !!process.env.AUTH_SECRET);
+export const proxy = auth((req) => {
+  const isLoggedIn = !!req.auth?.user;
+  const isLoginPage = req.nextUrl.pathname === "/login";
 
-  const isLoginPage = request.nextUrl.pathname === "/login";
+  console.log("[proxy]", req.nextUrl.pathname, "loggedIn:", isLoggedIn);
 
-  if (!token && !isLoginPage) {
-    const loginUrl = new URL("/login", request.url);
-    return NextResponse.redirect(loginUrl);
+  if (!isLoggedIn && !isLoginPage) {
+    return Response.redirect(new URL("/login", req.nextUrl));
   }
 
-  if (token && isLoginPage) {
-    return NextResponse.redirect(new URL("/", request.url));
+  if (isLoggedIn && isLoginPage) {
+    return Response.redirect(new URL("/", req.nextUrl));
   }
 
-  return NextResponse.next();
-}
+  return undefined; // continue
+});
 
 export const config = {
   matcher: [
