@@ -5,8 +5,7 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -17,13 +16,12 @@ export default function LoginPage() {
     setLoading(true);
 
     const result = await signIn("credentials", {
-      email,
-      password,
+      username,
       redirect: false,
     });
 
     if (result?.error) {
-      setError("Invalid email or password");
+      setError("Username not recognized");
       setLoading(false);
     } else {
       router.push("/");
@@ -45,29 +43,16 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-[var(--c-text-primary)] mb-1.5">
-                Email
+                Username
               </label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 required
                 autoFocus
                 className="w-full border border-[var(--c-border)] rounded-lg px-3 py-2 text-sm bg-[var(--c-card-bg)] text-[var(--c-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)] focus:border-transparent"
-                placeholder="you@winsome.com"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-[var(--c-text-primary)] mb-1.5">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full border border-[var(--c-border)] rounded-lg px-3 py-2 text-sm bg-[var(--c-card-bg)] text-[var(--c-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)] focus:border-transparent"
+                placeholder="Enter your username"
               />
             </div>
 
@@ -77,7 +62,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !username.trim()}
               className="w-full px-4 py-2.5 bg-[var(--c-accent)] text-white text-sm font-medium rounded-lg hover:bg-[var(--c-accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? "Signing in\u2026" : "Sign In"}

@@ -16,7 +16,6 @@
 
 import { PrismaClient, SkuTier, Country, ContainerType, LocationType, UserRole } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import bcrypt from "bcryptjs";
 import "dotenv/config";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
@@ -226,22 +225,18 @@ async function main() {
   // -------------------------------------------------------
   // 7. Admin User
   // -------------------------------------------------------
-  console.log("  Setting up admin user...");
-
-  const defaultPassword = "canopy2025";
-  const passwordHash = await bcrypt.hash(defaultPassword, 12);
+  console.log("  Setting up users...");
 
   await prisma.user.upsert({
-    where: { email: "admin@winsome.com" },
-    update: {},
+    where: { email: "papp@winsome.com" },
+    update: { name: "papp" },
     create: {
-      email: "admin@winsome.com",
-      name: "System Admin",
+      email: "papp@winsome.com",
+      name: "papp",
       role: UserRole.admin,
-      passwordHash,
     },
   });
-  console.log("  ✓ Admin user created (admin@winsome.com / canopy2025)\n");
+  console.log("  ✓ Admin user created (username: papp)\n");
 
   // -------------------------------------------------------
   // 8. System Settings (V2)
