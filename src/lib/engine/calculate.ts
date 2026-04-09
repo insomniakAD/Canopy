@@ -22,6 +22,8 @@ import { loadSeasonalityFactors, getAverageFactorOverWindow } from "./seasonalit
 import { calculateInventoryForSku } from "./inventory";
 import { resolveLeadTime } from "./lead-time";
 import { getAmazonForecastAverage } from "./amazon-forecast";
+import { calculateAmazonDoi } from "./amazon-doi";
+import { assessDiHealth } from "./di-health";
 
 export interface CalculationRunResult {
   runDate: Date;
@@ -100,7 +102,36 @@ export async function runCalculations(
     // 6. Save demand metrics to database
     await saveDemandMetrics(db, demand, runDate);
 
-    results.push({ demand, inventory });
+    // 7. Amazon DOI analysis (for DI-eligible or any SKU with Amazon velocity)
+    const totalAmazonVelocity =
+      demand.channelVelocity.amazon1p +
+      demand.channelVelocity.amazonDf +
+      demand.channelVelocity.amazonDi;
+
+    let amazonDoi = undefined;
+    let diHealth = undefined;
+
+    if (totalAmazonVelocity > 0) {
+      amazonDoi = await calculateAmazonDoi(
+        db, sku.id, sku.tier, demand.channelVelocity, inventory.onHand.amazon1p
+      );
+    }
+
+    // 8. DI health assessment (only for DI-eligible SKUs)
+    if (sku.isDiEligible) {
+      diHealth = await assessDiHealth(db, sku.id, demand.channelVelocity, runDate);
+    }
+
+    // 9. Update averageSellingPrice on SKU if we have revenue data
+    if (demand.weeklyRevenueUsd > 0 && demand.blendedWeeklyVelocity > 0) {
+      const avgPrice = demand.weeklyRevenueUsd / demand.blendedWeeklyVelocity;
+      await db.sku.update({
+        where: { id: sku.id },
+        data: { averageSellingPrice: Math.round(avgPrice * 100) / 100 },
+      });
+    }
+
+    results.push({ demand, inventory, amazonDoi, diHealth });
   }
 
   return {
@@ -150,7 +181,33 @@ export async function runCalculationForSku(
 
   await saveDemandMetrics(db, demand, runDate);
 
-  return { demand, inventory };
+  const totalAmazonVelocity =
+    demand.channelVelocity.amazon1p +
+    demand.channelVelocity.amazonDf +
+    demand.channelVelocity.amazonDi;
+
+  let amazonDoi = undefined;
+  let diHealth = undefined;
+
+  if (totalAmazonVelocity > 0) {
+    amazonDoi = await calculateAmazonDoi(
+      db, sku.id, sku.tier, demand.channelVelocity, inventory.onHand.amazon1p
+    );
+  }
+
+  if (sku.isDiEligible) {
+    diHealth = await assessDiHealth(db, sku.id, demand.channelVelocity, runDate);
+  }
+
+  if (demand.weeklyRevenueUsd > 0 && demand.blendedWeeklyVelocity > 0) {
+    const avgPrice = demand.weeklyRevenueUsd / demand.blendedWeeklyVelocity;
+    await db.sku.update({
+      where: { id: sku.id },
+      data: { averageSellingPrice: Math.round(avgPrice * 100) / 100 },
+    });
+  }
+
+  return { demand, inventory, amazonDoi, diHealth };
 }
 
 /**
@@ -167,6 +224,15 @@ async function saveDemandMetrics(
 
   const records: Parameters<typeof db.demandMetric.create>[0]["data"][] = [];
 
+  // V2 channel velocity fields (same for all period records of this SKU)
+  const v2Fields = {
+    channelAmazon1pVelocity: demand.channelVelocity.amazon1p,
+    channelAmazonDfVelocity: demand.channelVelocity.amazonDf,
+    channelAmazonDiVelocity: demand.channelVelocity.amazonDi,
+    channelDomesticVelocity: demand.channelVelocity.domestic,
+    weeklyRevenueUsd: demand.weeklyRevenueUsd,
+  };
+
   // Individual periods
   for (const [, vel] of Object.entries(demand.velocities)) {
     if (vel) {
@@ -180,6 +246,7 @@ async function saveDemandMetrics(
         blendedVelocity: demand.blendedWeeklyVelocity,
         seasonallyAdjustedVelocity: demand.seasonallyAdjustedVelocity,
         calculatedAt,
+        ...v2Fields,
       });
     }
   }
@@ -197,6 +264,7 @@ async function saveDemandMetrics(
       blendedVelocity: demand.blendedWeeklyVelocity,
       seasonallyAdjustedVelocity: demand.seasonallyAdjustedVelocity,
       calculatedAt,
+      ...v2Fields,
     });
   }
 

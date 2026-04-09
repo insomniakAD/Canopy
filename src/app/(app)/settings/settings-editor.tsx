@@ -11,6 +11,7 @@ interface TierRule {
   id: string;
   tier: string;
   targetDaysOfSupply: number;
+  amazonTargetDoi: number | null;
   description: string | null;
 }
 
@@ -46,12 +47,21 @@ interface SeasonalityEntry {
   factor: number;
 }
 
+interface SystemSettingEntry {
+  id: string;
+  key: string;
+  value: string;
+  label: string | null;
+  description: string | null;
+}
+
 interface Props {
   tierRules: TierRule[];
   safetyRules: SafetyRule[];
   leadTimeRules: LeadTimeRule[];
   containerRules: ContainerRule[];
   seasonality: SeasonalityEntry[];
+  systemSettings: SystemSettingEntry[];
 }
 
 // ---------------------------------------------------------------------------
@@ -210,6 +220,7 @@ export function SettingsEditor({
   leadTimeRules: initialLeadTimeRules,
   containerRules: initialContainerRules,
   seasonality: initialSeasonality,
+  systemSettings: initialSystemSettings,
 }: Props) {
   // Mutable state so edits reflect immediately
   const [tierRules, setTierRules] = useState(initialTierRules);
@@ -217,6 +228,7 @@ export function SettingsEditor({
   const [leadTimeRules, setLeadTimeRules] = useState(initialLeadTimeRules);
   const [containerRules, setContainerRules] = useState(initialContainerRules);
   const [seasonality, setSeasonality] = useState(initialSeasonality);
+  const [systemSettings, setSystemSettings] = useState(initialSystemSettings);
 
   const [editingCell, setEditingCell] = useState<EditingCell>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(null);
@@ -295,6 +307,11 @@ export function SettingsEditor({
               prev.map((s) => (s.id === id ? { ...s, [field]: numValue } : s))
             );
             break;
+          case "system_settings":
+            setSystemSettings((prev) =>
+              prev.map((s) => (s.id === id ? { ...s, value: String(numValue) } : s))
+            );
+            break;
         }
 
         setSaveStatus({ table, id, field, status: "saved" });
@@ -324,6 +341,7 @@ export function SettingsEditor({
               <th className="py-2 font-medium">Tier</th>
               <th className="py-2 font-medium text-right">Target Days of Supply</th>
               <th className="py-2 font-medium text-right">Target Weeks</th>
+              <th className="py-2 font-medium text-right">Amazon DOI Target</th>
               <th className="py-2 font-medium">Description</th>
             </tr>
           </thead>
@@ -343,6 +361,20 @@ export function SettingsEditor({
                 </td>
                 <td className="py-3 text-right font-mono text-[var(--c-text-secondary)]">
                   {(r.targetDaysOfSupply / 7).toFixed(1)}
+                </td>
+                <td className="py-3 text-right">
+                  {r.amazonTargetDoi != null ? (
+                    <EditableCell
+                      {...cellProps}
+                      table="sku_tier_rules"
+                      id={r.id}
+                      field="amazonTargetDoi"
+                      value={r.amazonTargetDoi}
+                      editing={isEditing("sku_tier_rules", r.id, "amazonTargetDoi")}
+                    />
+                  ) : (
+                    "\u2014"
+                  )}
                 </td>
                 <td className="py-3 text-[var(--c-text-secondary)]">{r.description ?? "\u2014"}</td>
               </tr>
@@ -583,6 +615,41 @@ export function SettingsEditor({
           Factors above 1.0 increase the demand signal (e.g. holiday season). Below 1.0 reduces it.
         </p>
       </Card>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* System settings (V2)                                             */}
+      {/* ---------------------------------------------------------------- */}
+      {systemSettings.length > 0 && (
+        <Card title="System Settings" subtitle="V2 alert thresholds and configuration">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[var(--c-text-secondary)] text-xs uppercase tracking-wide border-b border-[var(--c-border)]">
+                <th className="py-2 font-medium">Setting</th>
+                <th className="py-2 font-medium text-right">Value</th>
+                <th className="py-2 font-medium">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {systemSettings.map((s) => (
+                <tr key={s.id} className="border-b border-[var(--c-border-row)]">
+                  <td className="py-3 font-semibold">{s.label ?? s.key}</td>
+                  <td className="py-3 text-right">
+                    <EditableCell
+                      {...cellProps}
+                      table="system_settings"
+                      id={s.id}
+                      field="value"
+                      value={Number(s.value) || 0}
+                      editing={isEditing("system_settings", s.id, "value")}
+                    />
+                  </td>
+                  <td className="py-3 text-[var(--c-text-secondary)] text-xs">{s.description ?? "\u2014"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
 
       {/* ---------------------------------------------------------------- */}
       {/* Footer note                                                      */}

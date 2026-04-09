@@ -55,6 +55,24 @@ async function loadDashboard() {
     // Active SKU count
     const skuCount = await db.sku.count({ where: { status: "active" } });
 
+    // V2: Amazon DOI alerts — SKUs with critically low DOI
+    const doiAlerts = recs
+      .filter((r) => r.amazonDoi != null && r.amazonTargetDoi != null)
+      .filter((r) => Number(r.amazonDoi) < (r.amazonTargetDoi ?? 40) * 0.6)
+      .sort((a, b) => Number(a.amazonDoi ?? 0) - Number(b.amazonDoi ?? 0))
+      .slice(0, 5);
+
+    // V2: DI health alerts — SKUs with red/critical DI status
+    const diAlerts = recs
+      .filter((r) => r.diHealthStatus === "red" || r.diHealthStatus === "critical")
+      .slice(0, 5);
+
+    // V2: Forecast variance alerts — SKUs where Amazon forecast differs >30% from Canopy
+    const forecastAlerts = recs
+      .filter((r) => r.forecastVariancePct != null && Math.abs(Number(r.forecastVariancePct)) > 30)
+      .sort((a, b) => Math.abs(Number(b.forecastVariancePct)) - Math.abs(Number(a.forecastVariancePct)))
+      .slice(0, 5);
+
     return {
       ok: true as const,
       skuCount,
@@ -66,6 +84,9 @@ async function loadDashboard() {
       stockoutRisks,
       recentImports,
       lastRunDate: recs[0]?.calculationDate ?? null,
+      doiAlerts,
+      diAlerts,
+      forecastAlerts,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -109,6 +130,9 @@ export default async function DashboardPage() {
     stockoutRisks,
     recentImports,
     lastRunDate,
+    doiAlerts,
+    diAlerts,
+    forecastAlerts,
   } = data;
 
   const hasRecs = orderCount + watchCount + dnoCount > 0;
@@ -197,6 +221,96 @@ export default async function DashboardPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </Card>
+      )}
+
+      {/* V2: Amazon DOI Alerts */}
+      {doiAlerts.length > 0 && (
+        <Card
+          title="Amazon DOI Alerts"
+          subtitle="SKUs with low Amazon inventory — expect incoming 1P/DF orders"
+          className="mb-8"
+        >
+          <div className="space-y-2">
+            {doiAlerts.map((r) => (
+              <div key={r.id} className="flex items-center justify-between px-4 py-2.5 bg-[var(--c-error-bg-light)] rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Link href={`/skus/${r.skuId}`} className="font-semibold text-sm text-[var(--c-accent)] hover:underline">
+                    {r.sku.skuCode}
+                  </Link>
+                  <span className="text-xs text-[var(--c-text-secondary)] truncate max-w-[200px]">{r.sku.name}</span>
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="font-mono">
+                    <span className="font-bold text-[var(--c-error)]">{Number(r.amazonDoi).toFixed(0)}d</span>
+                    <span className="text-[var(--c-text-tertiary)]"> / {r.amazonTargetDoi}d target</span>
+                  </span>
+                  <Badge variant={Number(r.amazonDoi) <= 0 ? "error" : "warning"}>
+                    {Number(r.amazonDoi) <= 0 ? "Out of Stock" : "Low DOI"}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+            <Link href="/amazon-doi" className="block text-xs text-[var(--c-accent)] hover:underline mt-2">
+              View all Amazon DOI &rarr;
+            </Link>
+          </div>
+        </Card>
+      )}
+
+      {/* V2: DI Health Alerts */}
+      {diAlerts.length > 0 && (
+        <Card
+          title="DI Health Alerts"
+          subtitle="Direct Import orders overdue — Woodinville may see increased 1P/DF volume"
+          className="mb-8"
+        >
+          <div className="space-y-2">
+            {diAlerts.map((r) => (
+              <div key={r.id} className="flex items-center justify-between px-4 py-2.5 bg-[var(--c-warning-bg)] rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Link href={`/skus/${r.skuId}`} className="font-semibold text-sm text-[var(--c-accent)] hover:underline">
+                    {r.sku.skuCode}
+                  </Link>
+                  <span className="text-xs text-[var(--c-text-secondary)] truncate max-w-[200px]">{r.sku.name}</span>
+                </div>
+                <Badge variant={r.diHealthStatus === "critical" ? "error" : "warning"}>
+                  {r.diHealthStatus === "critical" ? "Critical" : "Alert"}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* V2: Forecast Variance Alerts */}
+      {forecastAlerts.length > 0 && (
+        <Card
+          title="Forecast Variance Alerts"
+          subtitle="SKUs where Amazon's forecast differs significantly from Canopy"
+          className="mb-8"
+        >
+          <div className="space-y-2">
+            {forecastAlerts.map((r) => {
+              const pct = Number(r.forecastVariancePct);
+              const direction = pct > 0 ? "higher" : "lower";
+              return (
+                <div key={r.id} className="flex items-center justify-between px-4 py-2.5 bg-[var(--c-info-bg-light)] rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <Link href={`/skus/${r.skuId}`} className="font-semibold text-sm text-[var(--c-accent)] hover:underline">
+                      {r.sku.skuCode}
+                    </Link>
+                    <span className="text-xs text-[var(--c-text-secondary)] truncate max-w-[200px]">{r.sku.name}</span>
+                  </div>
+                  <span className="text-sm font-mono">
+                    Amazon is <span className={pct > 0 ? "text-[var(--c-success)] font-bold" : "text-[var(--c-error)] font-bold"}>
+                      {Math.abs(pct).toFixed(0)}% {direction}
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </Card>
       )}

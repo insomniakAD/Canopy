@@ -20,6 +20,7 @@ import { processAmazonVendorCentral } from "./process-amazon-vendor-central";
 import { processAmazonForecast } from "./process-amazon-forecast";
 import { processAsinMapping } from "./process-asin-mapping";
 import { processPurchaseOrders } from "./process-purchase-orders";
+import { processDiOrders } from "./process-di-orders";
 
 export interface ImportRequest {
   buffer: Buffer;
@@ -115,6 +116,10 @@ export async function runImport(
 
       case "purchase_orders":
         result = await processPurchaseOrders(db, rows, batch.id);
+        break;
+
+      case "di_orders":
+        result = await processDiOrders(db, rows, batch.id);
         break;
 
       default:

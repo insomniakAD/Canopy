@@ -34,17 +34,26 @@ async function main() {
     {
       tier: SkuTier.A,
       targetDaysOfSupply: 60,
-      description: "Top third of SKUs by revenue. Keep 60 days of inventory.",
+      amazonTargetDoi: 60,
+      description: "Top 25% of SKUs by revenue. Keep 60 days of inventory. Amazon DOI target: 60.",
     },
     {
       tier: SkuTier.B,
       targetDaysOfSupply: 50,
-      description: "Middle third of SKUs by revenue. Keep 50 days of inventory.",
+      amazonTargetDoi: 50,
+      description: "Top 50% of SKUs by revenue. Keep 50 days of inventory. Amazon DOI target: 50.",
     },
     {
       tier: SkuTier.C,
       targetDaysOfSupply: 40,
-      description: "Bottom third of SKUs by revenue. Keep 40 days of inventory.",
+      amazonTargetDoi: 40,
+      description: "Top 75% of SKUs by revenue. Keep 40 days of inventory. Amazon DOI target: 40.",
+    },
+    {
+      tier: SkuTier.LP,
+      targetDaysOfSupply: 30,
+      amazonTargetDoi: 30,
+      description: "Bottom 25% (Low Priority). Keep 30 days of inventory. Amazon DOI target: 30.",
     },
   ];
 
@@ -55,7 +64,7 @@ async function main() {
       create: rule,
     });
   }
-  console.log("  ✓ 3 tier rules created (A=60d, B=40d, C=30d)\n");
+  console.log("  ✓ 4 tier rules created (A=60d, B=50d, C=40d, LP=30d)\n");
 
   // -------------------------------------------------------
   // 2. Safety Stock Rules
@@ -78,6 +87,11 @@ async function main() {
       safetyStockDays: 7,
       description: "Bottom tier: 1 week safety buffer on top of target.",
     },
+    {
+      tier: SkuTier.LP,
+      safetyStockDays: 5,
+      description: "Low Priority: minimal safety buffer.",
+    },
   ];
 
   for (const rule of safetyRules) {
@@ -87,7 +101,7 @@ async function main() {
       create: rule,
     });
   }
-  console.log("  ✓ 3 safety stock rules created (A=14d, B=10d, C=7d)\n");
+  console.log("  ✓ 4 safety stock rules created (A=14d, B=10d, C=7d, LP=5d)\n");
 
   // -------------------------------------------------------
   // 3. Lead Time Rules
@@ -230,17 +244,59 @@ async function main() {
   console.log("  ✓ Admin user created (admin@winsome.com / canopy2025)\n");
 
   // -------------------------------------------------------
+  // 8. System Settings (V2)
+  // -------------------------------------------------------
+  console.log("  Setting up V2 system settings...");
+
+  const systemSettings = [
+    {
+      key: "forecastDropAlertPct",
+      value: "15",
+      label: "Forecast Drop Alert %",
+      description: "Alert when Amazon forecast drops by this % compared to previous import.",
+    },
+    {
+      key: "diHealthCadenceMultiplier",
+      value: "1.5",
+      label: "DI Cadence Alert Multiplier",
+      description: "Flag DI health as 'red' when days since last order exceeds avg gap × this multiplier.",
+    },
+    {
+      key: "channelShiftAlertPct",
+      value: "20",
+      label: "Channel Shift Alert %",
+      description: "Alert when a channel's share of demand shifts by more than this % between runs.",
+    },
+    {
+      key: "tierRecalcDayOfYear",
+      value: "1",
+      label: "Tier Recalculation Day",
+      description: "Day of year (1-365) when annual tier recalculation is suggested.",
+    },
+  ];
+
+  for (const setting of systemSettings) {
+    await prisma.systemSetting.upsert({
+      where: { key: setting.key },
+      update: { value: setting.value, label: setting.label, description: setting.description },
+      create: setting,
+    });
+  }
+  console.log("  ✓ 4 system settings created (V2 alert thresholds)\n");
+
+  // -------------------------------------------------------
   // Done
   // -------------------------------------------------------
   console.log("🌿 Seed complete! Canopy database is ready.\n");
   console.log("Summary:");
-  console.log("  • 3 SKU tier rules (A/B/C)");
-  console.log("  • 3 safety stock rules");
+  console.log("  • 4 SKU tier rules (A/B/C/LP)");
+  console.log("  • 4 safety stock rules");
   console.log("  • 3 lead time rules (China/Malaysia/Thailand)");
   console.log("  • 2 container rules (40GP/40HQ)");
   console.log("  • 12 seasonality factors (all 1.0 — ready for your input)");
   console.log("  • 2 inventory locations (Woodinville Warehouse + Amazon 1P)");
   console.log("  • 1 admin user");
+  console.log("  • 4 system settings (V2 alert thresholds)");
 }
 
 main()

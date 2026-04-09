@@ -50,6 +50,12 @@ export async function calculateDemandForSku(
   // Uses whichever periods have data. Falls back gracefully.
   const blendedWeeklyVelocity = computeBlendedVelocity(threeMonth, sixMonth, twelveMonth);
 
+  // --- Channel velocity breakdown (blended across periods) ---
+  const channelVelocity = computeBlendedChannelVelocity(threeMonth, sixMonth, twelveMonth);
+
+  // --- Weekly revenue (blended across periods) ---
+  const weeklyRevenueUsd = computeBlendedRevenue(threeMonth, sixMonth, twelveMonth);
+
   // --- Seasonality adjustment ---
   const seasonallyAdjustedVelocity = blendedWeeklyVelocity * seasonalityFactor;
 
@@ -61,6 +67,8 @@ export async function calculateDemandForSku(
     seasonallyAdjustedVelocity,
     seasonalityFactor,
     amazonForecastWeekly,
+    channelVelocity,
+    weeklyRevenueUsd,
   };
 }
 
@@ -102,7 +110,8 @@ async function calculatePeriodVelocity(
 
   // Pro-rate and sum
   let totalUnits = 0;
-  const channelUnits = { domestic: 0, amazon_1p: 0, amazon_di: 0 };
+  let totalRevenue = 0;
+  const channelUnits = { domestic: 0, amazon_1p: 0, amazon_df: 0, amazon_di: 0 };
 
   for (const rec of records) {
     // Calculate overlap between the record's period and our lookback window
@@ -120,6 +129,11 @@ async function calculatePeriodVelocity(
 
     totalUnits += proRatedUnits;
 
+    // Pro-rate revenue the same way
+    if (rec.revenueUsd) {
+      totalRevenue += Number(rec.revenueUsd) * fraction;
+    }
+
     const channel = rec.channel as keyof typeof channelUnits;
     if (channel in channelUnits) {
       channelUnits[channel] += proRatedUnits;
@@ -135,6 +149,7 @@ async function calculatePeriodVelocity(
     startDate,
     endDate,
     channels: channelUnits,
+    revenueUsd: totalRevenue,
   };
 }
 
@@ -169,6 +184,53 @@ function computeBlendedVelocity(
   // Normalize weights to sum to 1.0
   const totalWeight = parts.reduce((sum, p) => sum + p.weight, 0);
   return parts.reduce((sum, p) => sum + p.velocity * (p.weight / totalWeight), 0);
+}
+
+/**
+ * Blend channel velocities across periods using the same weights.
+ * Returns per-channel units/week.
+ */
+function computeBlendedChannelVelocity(
+  threeMonth: PeriodVelocity | null,
+  sixMonth: PeriodVelocity | null,
+  twelveMonth: PeriodVelocity | null
+): { amazon1p: number; amazonDf: number; amazonDi: number; domestic: number } {
+  const channels = ["amazon_1p", "amazon_df", "amazon_di", "domestic"] as const;
+  const result = { amazon1p: 0, amazonDf: 0, amazonDi: 0, domestic: 0 };
+  const keyMap = { amazon_1p: "amazon1p", amazon_df: "amazonDf", amazon_di: "amazonDi", domestic: "domestic" } as const;
+
+  for (const ch of channels) {
+    const parts: { velocity: number; weight: number }[] = [];
+    if (threeMonth) parts.push({ velocity: threeMonth.channels[ch] / threeMonth.periodWeeks, weight: BLEND_WEIGHTS.threeMonth });
+    if (sixMonth) parts.push({ velocity: sixMonth.channels[ch] / sixMonth.periodWeeks, weight: BLEND_WEIGHTS.sixMonth });
+    if (twelveMonth) parts.push({ velocity: twelveMonth.channels[ch] / twelveMonth.periodWeeks, weight: BLEND_WEIGHTS.twelveMonth });
+
+    if (parts.length > 0) {
+      const totalWeight = parts.reduce((s, p) => s + p.weight, 0);
+      result[keyMap[ch]] = parts.reduce((s, p) => s + p.velocity * (p.weight / totalWeight), 0);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Blend revenue across periods using the same weights.
+ * Returns $/week.
+ */
+function computeBlendedRevenue(
+  threeMonth: PeriodVelocity | null,
+  sixMonth: PeriodVelocity | null,
+  twelveMonth: PeriodVelocity | null
+): number {
+  const parts: { velocity: number; weight: number }[] = [];
+  if (threeMonth && threeMonth.periodWeeks > 0) parts.push({ velocity: threeMonth.revenueUsd / threeMonth.periodWeeks, weight: BLEND_WEIGHTS.threeMonth });
+  if (sixMonth && sixMonth.periodWeeks > 0) parts.push({ velocity: sixMonth.revenueUsd / sixMonth.periodWeeks, weight: BLEND_WEIGHTS.sixMonth });
+  if (twelveMonth && twelveMonth.periodWeeks > 0) parts.push({ velocity: twelveMonth.revenueUsd / twelveMonth.periodWeeks, weight: BLEND_WEIGHTS.twelveMonth });
+
+  if (parts.length === 0) return 0;
+  const totalWeight = parts.reduce((s, p) => s + p.weight, 0);
+  return parts.reduce((s, p) => s + p.velocity * (p.weight / totalWeight), 0);
 }
 
 /** Days between two dates (absolute) */

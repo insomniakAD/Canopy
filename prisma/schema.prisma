@@ -34,12 +34,13 @@ enum SkuStatus {
   seasonal
 }
 
-/// SKU tier — determines target inventory level
-/// A = top third (60 days), B = middle third (40 days), C = bottom third (30 days)
+/// SKU tier — determines target inventory level and Amazon DOI targets
+/// A = top 25% revenue (60 DOI), B = top 50% (50 DOI), C = top 75% (40 DOI), LP = bottom 25%
 enum SkuTier {
   A
   B
   C
+  LP  // Low Priority — bottom 25% of revenue
 }
 
 /// Factory origin country
@@ -73,13 +74,15 @@ enum LocationType {
 }
 
 /// Sales channel — where the consumer purchase happened
-/// Simplified: WDS can't distinguish DF/marketplace/wholesale, so all
-/// Woodinville warehouse shipments are "domestic". Amazon 1P is sell-through
-/// from Amazon warehouses. Amazon DI is Direct Import (separate flow).
+/// Amazon has 3 channels: 1P (Amazon issues POs, ships from their warehouse),
+/// DF (Winsome drop-ships from Woodinville for Amazon customers),
+/// DI (Amazon issues POs, factory ships direct to Amazon — never touches Woodinville).
+/// Domestic = all Woodinville warehouse shipments (non-Amazon).
 enum SalesChannel {
-  amazon_1p   // Amazon Vendor Central sell-through (was "amazon_retail")
-  amazon_di   // Amazon Direct Import
-  domestic    // All Woodinville warehouse shipments (DF + marketplace + wholesale)
+  amazon_1p   // Amazon Vendor Central sell-through (Amazon issues POs, Winsome ships from warehouse)
+  amazon_df   // Amazon Direct Fulfillment (Winsome drop-ships from Woodinville)
+  amazon_di   // Amazon Direct Import (factory ships direct to Amazon warehouses)
+  domestic    // All Woodinville warehouse shipments (non-Amazon)
 }
 
 /// Where imported data came from
@@ -97,6 +100,7 @@ enum ImportType {
   amazon_forecast     // Amazon Mean Forecast (48-week forward forecast by ASIN)
   purchase_orders     // Open POs from WDS
   asin_mapping        // One-time or update: links ASINs to Winsome SKU codes
+  di_orders           // Amazon Direct Import POs (factory ships direct to Amazon)
 }
 
 /// Status of an import batch
@@ -163,6 +167,11 @@ model Sku {
   unitCostUsd      Decimal?  @map("unit_cost_usd")           // Current landed cost per unit
   defaultFactoryId String?   @map("default_factory_id") @db.Uuid  // Last factory used
 
+  // V2 fields
+  isDiEligible        Boolean   @default(false) @map("is_di_eligible")  // Part of Amazon DI program
+  autoTier            SkuTier?  @map("auto_tier")                       // System-calculated tier from revenue
+  averageSellingPrice Decimal?  @map("average_selling_price")            // Auto-calculated from latest sales
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -176,6 +185,8 @@ model Sku {
   overrideLogs           OverrideLog[]
   amazonForecasts        AmazonForecast[]
   amazonMetrics          AmazonMetric[]
+  diOrders               DiOrder[]
+  tierSnapshots          TierSnapshot[]
 
   @@map("skus")
 }
@@ -199,6 +210,7 @@ model Factory {
   skus                    Sku[]
   purchaseOrders          PurchaseOrder[]
   reorderRecommendations  ReorderRecommendation[]
+  diOrders                DiOrder[]
 
   @@map("factories")
 }
@@ -412,6 +424,13 @@ model DemandMetric {
   blendedVelocity             Decimal? @map("blended_velocity")     // Weighted avg across periods
   seasonallyAdjustedVelocity  Decimal? @map("seasonally_adjusted_velocity")
 
+  // V2: Channel-level velocity breakdown
+  channelAmazon1pVelocity     Decimal? @map("channel_amazon_1p_velocity")   // Units/week via 1P
+  channelAmazonDfVelocity     Decimal? @map("channel_amazon_df_velocity")   // Units/week via Direct Fulfillment
+  channelAmazonDiVelocity     Decimal? @map("channel_amazon_di_velocity")   // Units/week via Direct Import
+  channelDomesticVelocity     Decimal? @map("channel_domestic_velocity")    // Units/week non-Amazon
+  weeklyRevenueUsd            Decimal? @map("weekly_revenue_usd")            // Revenue/week for tiering
+
   calculatedAt DateTime @default(now()) @map("calculated_at")
 
   // Relationships
@@ -451,6 +470,15 @@ model ReorderRecommendation {
   amazonForecastWeekly        Decimal?        @map("amazon_forecast_weekly")      // Amazon's avg weekly demand
   amazonForecastOrderQty      Int?            @map("amazon_forecast_order_qty")   // Order qty using Amazon's numbers
   forecastVariancePct         Decimal?        @map("forecast_variance_pct")       // % difference: Canopy vs Amazon
+
+  // --- Amazon DOI analysis (V2) ---
+  amazonOnHand                Int?            @map("amazon_on_hand")              // Amazon's current inventory
+  amazonDailyVelocity         Decimal?        @map("amazon_daily_velocity")        // Amazon sell-through rate
+  amazonDoi                   Decimal?        @map("amazon_doi")                   // Days of inventory at Amazon
+  amazonTargetDoi             Int?            @map("amazon_target_doi")            // From tier rules
+  woodinvilleExposure         Decimal?        @map("woodinville_exposure")          // Units/week Woodinville must cover
+  diSharePct                  Decimal?        @map("di_share_pct")                 // % of Amazon demand via DI
+  diHealthStatus              String?         @map("di_health_status")             // green/blue/amber/red/critical
 
   // --- Operational details ---
   recommendedFactoryId        String?         @map("recommended_factory_id") @db.Uuid
@@ -555,6 +583,7 @@ model ImportBatch {
   salesRecords       SalesRecord[]
   amazonForecasts    AmazonForecast[]
   amazonMetrics      AmazonMetric[]
+  diOrders           DiOrder[]
 
   @@map("import_batches")
 }
@@ -583,11 +612,12 @@ model ImportError {
 // ============================================================================
 
 /// Target inventory days by SKU tier. Admin-editable.
-/// A = 60 days, B = 50 days, C = 40 days
+/// A = 60 DOI, B = 50 DOI, C = 40 DOI, LP = minimal
 model SkuTierRule {
   id                  String  @id @default(uuid()) @db.Uuid
   tier                SkuTier @unique
   targetDaysOfSupply  Int     @map("target_days_of_supply")
+  amazonTargetDoi     Int?    @map("amazon_target_doi")        // V2: Amazon-specific DOI target
   description         String?
 
   updatedById String?   @map("updated_by_id") @db.Uuid
@@ -668,4 +698,79 @@ model SeasonalityFactor {
   updatedBy User? @relation(fields: [updatedById], references: [id])
 
   @@map("seasonality_factors")
+}
+
+// ============================================================================
+// V2 — AMAZON CHANNELS & TIERING
+// ============================================================================
+
+/// Amazon Direct Import purchase orders.
+/// These POs go from Amazon to Winsome's overseas factories — inventory never
+/// touches Woodinville. Tracking DI orders is critical because:
+/// 1. Amazon's 1P PO quantities may be smaller when DI orders are in pipeline
+/// 2. If DI is paused (tariffs), all volume shifts to 1P/DF hitting Woodinville
+/// 3. DI order cadence per SKU helps predict when Amazon will reorder
+model DiOrder {
+  id                  String      @id @default(uuid()) @db.Uuid
+  skuId               String      @map("sku_id") @db.Uuid
+  amazonPoNumber      String?     @map("amazon_po_number")          // Amazon's DI PO reference
+  quantity            Int                                             // Units ordered
+  orderDate           DateTime    @map("order_date") @db.Date
+  estimatedArrivalDate DateTime?  @map("estimated_arrival_date") @db.Date
+  actualArrivalDate   DateTime?   @map("actual_arrival_date") @db.Date
+  status              PoStatus    @default(ordered)                   // Reuse PO status enum
+  factoryId           String?     @map("factory_id") @db.Uuid
+  importBatchId       String?     @map("import_batch_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  sku         Sku          @relation(fields: [skuId], references: [id])
+  factory     Factory?     @relation(fields: [factoryId], references: [id])
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id])
+
+  @@index([skuId, orderDate])
+  @@index([status])
+  @@map("di_orders")
+}
+
+/// Tier snapshot — stores the result of each tier calculation run.
+/// Tiers are set annually (or on demand), NOT per purchasing run.
+/// Each run is preserved — never overwritten — for audit trail and rollback.
+///
+/// Run labels: "2025" (first of year), "2025-2", "2025-3" (subsequent runs).
+/// Always increment, even after rollback.
+model TierSnapshot {
+  id                    String   @id @default(uuid()) @db.Uuid
+  skuId                 String   @map("sku_id") @db.Uuid
+  runLabel              String   @map("run_label")                 // e.g. "2025", "2025-2"
+  tier                  SkuTier                                     // Tier assigned in this run
+  trailingRevenueUsd    Decimal  @map("trailing_revenue_usd")      // 12-month trailing revenue
+  revenueRankPct        Decimal  @map("revenue_rank_pct")           // Cumulative % of total revenue
+  isActive              Boolean  @default(false) @map("is_active")  // Currently applied to SKU
+
+  calculatedAt DateTime @default(now()) @map("calculated_at")
+  calculatedById String? @map("calculated_by_id") @db.Uuid
+
+  // Relationships
+  sku Sku @relation(fields: [skuId], references: [id])
+
+  @@index([runLabel])
+  @@index([skuId, isActive])
+  @@map("tier_snapshots")
+}
+
+/// System-wide settings (key-value pairs for V2 config).
+/// Used for settings that don't fit neatly into the tier/safety/lead time tables.
+model SystemSetting {
+  id    String @id @default(uuid()) @db.Uuid
+  key   String @unique                         // e.g. "forecastDropAlertPct"
+  value String                                  // Stored as string, parsed by consumer
+  label String?                                 // Human-readable name
+  description String?                           // Help text
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
 }

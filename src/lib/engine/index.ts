@@ -21,4 +21,7 @@ export type {
   SkuCalculationResult,
   PeriodVelocity,
   InboundShipment,
+  AmazonDoiAnalysis,
+  DiHealthAssessment,
+  DiHealthStatus,
 } from "./types";

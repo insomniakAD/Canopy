@@ -95,6 +95,31 @@ export function generateExplanation(
       lines.push("");
     }
 
+    // --- Amazon DOI (V2) ---
+    if (rec.amazonDoi !== null && rec.amazonDoi !== undefined) {
+      lines.push(`AMAZON INVENTORY:`);
+      lines.push(`  Amazon on-hand: ${rec.amazonOnHand?.toLocaleString() ?? "N/A"} units`);
+      lines.push(`  Amazon daily sell-through: ${round(rec.amazonDailyVelocity ?? 0)} units/day`);
+      lines.push(`  Amazon DOI: ${round(rec.amazonDoi)} days (target: ${rec.amazonTargetDoi ?? "N/A"} days)`);
+      if (rec.woodinvilleExposure !== null && rec.woodinvilleExposure !== undefined) {
+        lines.push(`  Woodinville exposure (1P+DF): ${round(rec.woodinvilleExposure)} units/week`);
+      }
+      if (rec.diSharePct !== null && rec.diSharePct !== undefined && rec.diSharePct > 0) {
+        lines.push(`  DI share of Amazon: ${round(rec.diSharePct)}%`);
+      }
+      if (rec.diHealthStatus) {
+        const statusLabels: Record<string, string> = {
+          green: "Healthy",
+          blue: "On track",
+          amber: "Watch — slightly behind",
+          red: "Alert — significantly overdue",
+          critical: "Critical — DI may be paused",
+        };
+        lines.push(`  DI health: ${statusLabels[rec.diHealthStatus] ?? rec.diHealthStatus}`);
+      }
+      lines.push("");
+    }
+
     // --- Timing ---
     if (rec.recommendedFactoryName) {
       lines.push(`FACTORY: ${rec.recommendedFactoryName}`);

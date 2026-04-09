@@ -20,13 +20,14 @@ const VALID_TABLES = [
   "lead_time_rules",
   "container_rules",
   "seasonality_factors",
+  "system_settings",
 ] as const;
 
 type ValidTable = (typeof VALID_TABLES)[number];
 
 /** Which numeric fields can be edited on each table. */
 const EDITABLE_FIELDS: Record<ValidTable, string[]> = {
-  sku_tier_rules: ["targetDaysOfSupply"],
+  sku_tier_rules: ["targetDaysOfSupply", "amazonTargetDoi"],
   safety_stock_rules: ["safetyStockDays"],
   lead_time_rules: [
     "poToProductionDays",
@@ -36,6 +37,7 @@ const EDITABLE_FIELDS: Record<ValidTable, string[]> = {
   ],
   container_rules: ["maxCbm", "maxWeightKg", "costEstimateUsd"],
   seasonality_factors: ["factor"],
+  system_settings: ["value"],
 };
 
 /** Fields stored as Decimal in the database (Prisma expects a number/string). */
@@ -49,6 +51,7 @@ const DECIMAL_FIELDS = new Set([
 /** Fields stored as Int in the database. */
 const INT_FIELDS = new Set([
   "targetDaysOfSupply",
+  "amazonTargetDoi",
   "safetyStockDays",
   "poToProductionDays",
   "productionDays",
@@ -145,6 +148,10 @@ export async function PUT(request: Request) {
         break;
       case "seasonality_factors":
         await db.seasonalityFactor.update({ where: { id }, data: updateData });
+        break;
+      case "system_settings":
+        // System settings store value as string
+        await db.systemSetting.update({ where: { id }, data: { value: String(numValue) } });
         break;
     }
 

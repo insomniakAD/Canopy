@@ -11,6 +11,7 @@ const IMPORT_TYPES = [
   { value: "amazon_vendor_central", label: "Amazon Vendor Central", requires: ["wds_inventory", "asin_mapping"] },
   { value: "amazon_forecast", label: "Amazon Forecasting", requires: ["wds_inventory", "asin_mapping"] },
   { value: "purchase_orders", label: "Purchase Orders", requires: ["wds_inventory"] },
+  { value: "di_orders", label: "Amazon DI Orders", requires: ["wds_inventory"] },
 ] as const;
 
 interface ImportResult {

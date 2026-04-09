@@ -9,12 +9,13 @@ const MONTH_NAMES = [
 
 async function loadSettings() {
   try {
-    const [tierRules, safetyRules, leadTimeRules, containerRules, seasonality] = await Promise.all([
+    const [tierRules, safetyRules, leadTimeRules, containerRules, seasonality, systemSettings] = await Promise.all([
       db.skuTierRule.findMany({ orderBy: { tier: "asc" } }),
       db.safetyStockRule.findMany({ orderBy: { tier: "asc" } }),
       db.leadTimeRule.findMany({ orderBy: { country: "asc" } }),
       db.containerRule.findMany({ orderBy: { containerType: "asc" } }),
       db.seasonalityFactor.findMany({ orderBy: { month: "asc" } }),
+      db.systemSetting.findMany({ orderBy: { key: "asc" } }),
     ]);
 
     return {
@@ -23,6 +24,7 @@ async function loadSettings() {
         id: r.id,
         tier: r.tier,
         targetDaysOfSupply: r.targetDaysOfSupply,
+        amazonTargetDoi: r.amazonTargetDoi,
         description: r.description,
       })),
       safetyRules: safetyRules.map((r) => ({
@@ -52,6 +54,13 @@ async function loadSettings() {
         month: s.month,
         monthName: MONTH_NAMES[s.month - 1] ?? `Month ${s.month}`,
         factor: Number(s.factor),
+      })),
+      systemSettings: systemSettings.map((s) => ({
+        id: s.id,
+        key: s.key,
+        value: s.value,
+        label: s.label,
+        description: s.description,
       })),
     };
   } catch {
@@ -89,6 +98,7 @@ export default async function SettingsPage() {
         leadTimeRules={data.leadTimeRules}
         containerRules={data.containerRules}
         seasonality={data.seasonality}
+        systemSettings={data.systemSettings}
       />
     </div>
   );

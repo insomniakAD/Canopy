@@ -28,10 +28,10 @@ const IMPORT_STEPS = [
   },
   {
     number: 4,
-    label: "Purchase Orders",
-    description: "Links to SKUs and factories",
+    label: "Purchase Orders & DI Orders",
+    description: "Winsome POs and Amazon Direct Import orders",
     requiredTypes: ["wds_inventory"],
-    completionTypes: ["purchase_orders"],
+    completionTypes: ["purchase_orders", "di_orders"],
   },
 ] as const;
 

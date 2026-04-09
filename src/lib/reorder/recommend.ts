@@ -131,6 +131,7 @@ async function generateRecommendation(
     tier: "C",
     targetDaysOfSupply: 30,
     safetyStockDays: 7,
+    amazonTargetDoi: 40,
   };
 
   // --- Reorder quantity ---
@@ -176,6 +177,7 @@ async function generateRecommendation(
       : null;
 
   // Build partial recommendation (without explanation)
+  const doi = calc.amazonDoi;
   const partial = {
     skuId: calc.demand.skuId,
     skuCode: calc.demand.skuCode,
@@ -195,6 +197,14 @@ async function generateRecommendation(
     amazonForecastWeekly: amazonForecastWeekly ?? null,
     amazonForecastOrderQty,
     forecastVariancePct,
+    // V2: Amazon DOI fields
+    amazonOnHand: doi?.amazonOnHand ?? null,
+    amazonDailyVelocity: doi?.amazonDailyVelocity ?? null,
+    amazonDoi: doi?.amazonDoi ?? null,
+    amazonTargetDoi: doi?.amazonTargetDoi ?? null,
+    woodinvilleExposure: doi?.woodinvilleExposure ?? null,
+    diSharePct: doi?.diSharePct ?? null,
+    diHealthStatus: calc.diHealth?.status ?? doi?.diHealthStatus ?? null,
     recommendedFactoryId: factory.factoryId,
     recommendedFactoryName: factory.factoryName,
     recommendedOrderByDate: timing.orderByDate,
@@ -240,6 +250,14 @@ async function saveRecommendation(
       amazonForecastWeekly: rec.amazonForecastWeekly,
       amazonForecastOrderQty: rec.amazonForecastOrderQty,
       forecastVariancePct: rec.forecastVariancePct,
+      // V2: Amazon DOI fields
+      amazonOnHand: rec.amazonOnHand,
+      amazonDailyVelocity: rec.amazonDailyVelocity,
+      amazonDoi: rec.amazonDoi,
+      amazonTargetDoi: rec.amazonTargetDoi,
+      woodinvilleExposure: rec.woodinvilleExposure,
+      diSharePct: rec.diSharePct,
+      diHealthStatus: rec.diHealthStatus,
       recommendedFactoryId: rec.recommendedFactoryId,
       recommendedOrderByDate: rec.recommendedOrderByDate,
       projectedStockoutDate: rec.projectedStockoutDate,
@@ -267,6 +285,7 @@ async function loadTierConfigs(
       tier: rule.tier,
       targetDaysOfSupply: rule.targetDaysOfSupply,
       safetyStockDays: safetyMap.get(rule.tier) ?? 7,
+      amazonTargetDoi: rule.amazonTargetDoi,
     });
   }
 

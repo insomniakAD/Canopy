@@ -29,6 +29,15 @@ export interface SkuRecommendation {
   amazonForecastOrderQty: number | null;
   forecastVariancePct: number | null;
 
+  // --- Amazon DOI (V2) ---
+  amazonOnHand: number | null;
+  amazonDailyVelocity: number | null;
+  amazonDoi: number | null;
+  amazonTargetDoi: number | null;
+  woodinvilleExposure: number | null;
+  diSharePct: number | null;
+  diHealthStatus: string | null;
+
   // --- Operational ---
   recommendedFactoryId: string | null;
   recommendedFactoryName: string | null;
@@ -76,4 +85,5 @@ export interface TierConfig {
   tier: string;
   targetDaysOfSupply: number;
   safetyStockDays: number;
+  amazonTargetDoi: number | null;
 }
