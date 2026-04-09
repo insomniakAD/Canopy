@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: "/skus", label: "SKU Planning", icon: "package" },
   { href: "/containers", label: "Container Planning", icon: "truck" },
   { href: "/amazon-doi", label: "Amazon DOI", icon: "signal" },
+  { href: "/forecast-accuracy", label: "Forecast Accuracy", icon: "target" },
   { href: "/tiers", label: "Tier Management", icon: "layers" },
   { href: "/reports", label: "Leadership Reports", icon: "chart" },
   { href: "/settings", label: "Settings", icon: "gear" },
@@ -45,6 +46,13 @@ const ICONS: Record<string, React.ReactNode> = {
   signal: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 10.125c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125v-9.75zM16.5 6.375c0-.621.504-1.125 1.125-1.125h2.25C20.496 5.25 21 5.754 21 6.375v13.5c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V6.375z" />
+    </svg>
+  ),
+  target: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 21a9 9 0 100-18 9 9 0 000 18z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 17a5 5 0 100-10 5 5 0 000 10z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 13a1 1 0 100-2 1 1 0 000 2z" />
     </svg>
   ),
   layers: (
