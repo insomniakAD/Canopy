@@ -24,6 +24,21 @@ export default function LoginPage() {
       setError("Username not recognized");
       setLoading(false);
     } else {
+      // Check for a user-preferred default view
+      try {
+        const res = await fetch("/api/profile");
+        if (res.ok) {
+          const profile = await res.json();
+          const defaultView = profile?.preferences?.defaultView;
+          if (defaultView && defaultView !== "/") {
+            router.push(defaultView);
+            router.refresh();
+            return;
+          }
+        }
+      } catch {
+        // Ignore — fall through to dashboard
+      }
       router.push("/");
       router.refresh();
     }

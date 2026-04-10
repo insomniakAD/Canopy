@@ -512,6 +512,7 @@ model User {
   passwordHash String?  @map("password_hash")
   role         UserRole @default(buyer)
   isActive     Boolean  @default(true) @map("is_active")
+  preferences  Json?    @default("{}") @db.JsonB
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

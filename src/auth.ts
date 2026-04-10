@@ -13,17 +13,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         username: { label: "Username", type: "text" },
       },
       async authorize(credentials) {
-        console.log("[auth] authorize called, credentials:", JSON.stringify(credentials));
-        if (!credentials?.username) {
-          console.log("[auth] no username provided");
-          return null;
-        }
+        if (!credentials?.username) return null;
 
         const username = (credentials.username as string).trim().toLowerCase();
-        console.log("[auth] looking up username:", username);
 
         try {
-          // Look up by name (case-insensitive)
           const user = await db.user.findFirst({
             where: {
               name: { equals: username, mode: "insensitive" },
@@ -31,13 +25,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             },
           });
 
-          console.log("[auth] user found:", user ? { id: user.id, name: user.name } : null);
-
           if (!user) return null;
 
-          return { id: user.id, email: user.email, name: user.name };
-        } catch (err) {
-          console.error("[auth] authorize error:", err);
+          return { id: user.id, email: user.email, name: user.name, role: user.role };
+        } catch {
           return null;
         }
       },

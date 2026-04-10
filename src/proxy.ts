@@ -9,8 +9,6 @@ export const proxy = auth((req) => {
   const isLoggedIn = !!req.auth?.user;
   const isLoginPage = req.nextUrl.pathname === "/login";
 
-  console.log("[proxy]", req.nextUrl.pathname, "loggedIn:", isLoggedIn);
-
   if (!isLoggedIn && !isLoginPage) {
     return Response.redirect(new URL("/login", req.nextUrl));
   }

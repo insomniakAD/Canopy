@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState, useRef, useEffect } from "react";
+import { useSession, signOut } from "next-auth/react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV_ITEMS = [
@@ -68,6 +70,78 @@ const ICONS: Record<string, React.ReactNode> = {
   ),
 };
 
+function UserMenu() {
+  const { data: session } = useSession();
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  const userName = session?.user?.name ?? "User";
+  const initials = userName
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg hover:bg-[var(--c-sidebar-border)] transition-colors text-left"
+      >
+        {/* Avatar circle */}
+        <div className="w-8 h-8 rounded-full bg-[var(--c-sidebar-active)] flex items-center justify-center text-xs font-bold text-white shrink-0">
+          {initials}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-white truncate">{userName}</div>
+        </div>
+        {/* Chevron */}
+        <svg className={`w-4 h-4 text-[var(--c-text-tertiary)] transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+        </svg>
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute bottom-full left-0 right-0 mb-1 mx-1 bg-[var(--c-card-bg)] border border-[var(--c-border)] rounded-lg shadow-lg overflow-hidden z-50">
+          <Link
+            href="/profile"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-[var(--c-text-primary)] hover:bg-[var(--c-page-bg)] transition-colors"
+          >
+            <svg className="w-4 h-4 text-[var(--c-text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+            </svg>
+            My Profile
+          </Link>
+          <div className="border-t border-[var(--c-border)]" />
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-[var(--c-error)] hover:bg-[var(--c-error-bg-light)] transition-colors text-left"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+            </svg>
+            Log Out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
 
@@ -104,10 +178,15 @@ export function Sidebar() {
         })}
       </div>
 
-      {/* Footer with theme toggle */}
-      <div className="px-3 py-4 border-t border-[var(--c-sidebar-border)] flex items-center justify-between">
-        <span className="text-xs text-[var(--c-text-secondary)] px-2">Canopy v0.1</span>
-        <ThemeToggle />
+      {/* Footer: user menu + theme toggle */}
+      <div className="border-t border-[var(--c-sidebar-border)]">
+        <div className="px-3 pt-3">
+          <UserMenu />
+        </div>
+        <div className="px-3 py-3 flex items-center justify-between">
+          <span className="text-xs text-[var(--c-text-tertiary)] px-2">v0.1</span>
+          <ThemeToggle />
+        </div>
       </div>
     </nav>
   );
