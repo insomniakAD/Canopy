@@ -48,6 +48,14 @@ enum Country {
   china
   malaysia
   thailand
+  indonesia
+}
+
+/// Status of a pending vendor transition for a SKU
+enum VendorTransitionStatus {
+  pending
+  consumed
+  cancelled
 }
 
 /// Purchase order lifecycle
@@ -101,6 +109,8 @@ enum ImportType {
   purchase_orders     // Open POs from WDS
   asin_mapping        // One-time or update: links ASINs to Winsome SKU codes
   di_orders           // Amazon Direct Import POs (factory ships direct to Amazon)
+  kit_composition     // Kit bill-of-materials: Parent SKU + Child SKUs + qty per kit
+  item_update         // Item Update: SKU attribute changes + Vendors sheet + Kits sheet
 }
 
 /// Status of an import batch
@@ -172,6 +182,16 @@ model Sku {
   autoTier            SkuTier?  @map("auto_tier")                       // System-calculated tier from revenue
   averageSellingPrice Decimal?  @map("average_selling_price")            // Auto-calculated from latest sales
 
+  // Kit Items (Parent/Child SKUs)
+  // Kit Parents are virtual sellable listings with no physical inventory.
+  // Kit Components are real physical SKUs that are consumed when a Parent sells.
+  // A SKU can be both a Component (in one kit) and a Standalone seller.
+  // A SKU cannot be both a Parent and a Component.
+  // Kit Parents ship only through Winsome Direct Fulfillment — Amazon's warehouse
+  // does not carry kits, so Parents have no Amazon WH inventory.
+  isKitParent    Boolean @default(false) @map("is_kit_parent")      // This SKU is a Kit Parent (virtual)
+  isKitComponent Boolean @default(false) @map("is_kit_component")   // This SKU is consumed by at least one Kit Parent
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -188,20 +208,56 @@ model Sku {
   diOrders               DiOrder[]
   tierSnapshots          TierSnapshot[]
 
+  // Kit relationships
+  kitComponentsAsParent KitComponent[] @relation("KitParent")
+  kitComponentsAsChild  KitComponent[] @relation("KitChild")
+
+  pendingVendorTransitions PendingVendorTransition[]
+
   @@map("skus")
+}
+
+/// Kit bill-of-materials: links Parent SKUs to their Child SKUs with per-kit quantities.
+/// One row per (Parent, Child) pair.
+///
+/// Example: Dining Set Parent → Table Child ×1, Chair-Pair Child ×2.
+/// When 1 kit sells, 1 Table + 2 Chair-Pairs ship.
+///
+/// Used for:
+///   - Deriving Child implied demand from Parent sales
+///   - Computing Parent "effective on-hand" = MIN(Child.on_hand ÷ qty_per_kit) across all children
+///   - Identifying Kit Components so they can absorb kit-implied demand in the engine
+model KitComponent {
+  id              String @id @default(uuid()) @db.Uuid
+  parentSkuId     String @map("parent_sku_id") @db.Uuid
+  childSkuId      String @map("child_sku_id") @db.Uuid
+  quantityPerKit  Int    @map("quantity_per_kit")   // How many of this Child per 1 Parent kit
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  parent Sku @relation("KitParent", fields: [parentSkuId], references: [id])
+  child  Sku @relation("KitChild",  fields: [childSkuId], references: [id])
+
+  @@unique([parentSkuId, childSkuId], name: "unique_kit_pair")
+  @@index([parentSkuId])
+  @@index([childSkuId])
+  @@map("kit_components")
 }
 
 /// Factories where products are manufactured.
 model Factory {
-  id                      String  @id @default(uuid()) @db.Uuid
+  id                      String   @id @default(uuid()) @db.Uuid
   name                    String
-  country                 Country
-  contactName             String? @map("contact_name")
-  contactEmail            String? @map("contact_email")
-  leadTimeProductionDays  Int?    @map("lead_time_production_days")  // Override default
-  leadTimeTransitDays     Int?    @map("lead_time_transit_days")     // Override default
+  country                 Country?
+  vendorCode              String?  @unique @map("vendor_code")          // WDS VENDOR# — used by Item Update importer
+  contactName             String?  @map("contact_name")
+  contactEmail            String?  @map("contact_email")
+  leadTimeProductionDays  Int?     @map("lead_time_production_days")
+  leadTimeTransitDays     Int?     @map("lead_time_transit_days")
   notes                   String?
-  isActive                Boolean @default(true) @map("is_active")
+  isActive                Boolean  @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -211,8 +267,42 @@ model Factory {
   purchaseOrders          PurchaseOrder[]
   reorderRecommendations  ReorderRecommendation[]
   diOrders                DiOrder[]
+  pendingTransitionsFrom  PendingVendorTransition[] @relation("TransitionFromFactory")
+  pendingTransitionsTo    PendingVendorTransition[] @relation("TransitionToFactory")
 
   @@map("factories")
+}
+
+/// Records a vendor change for a SKU that has not yet shipped a PO.
+/// Kept separate from the SKU record because vendor transitions are rare
+/// and should not clutter the core model. Surfaces on the reorder card
+/// as a banner + current-vs-next diff until a PO lands on the new vendor.
+model PendingVendorTransition {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  skuId                String                 @map("sku_id") @db.Uuid
+  newVendorCode        String                 @map("new_vendor_code")
+  fromFactoryId        String?                @map("from_factory_id") @db.Uuid
+  toFactoryId          String?                @map("to_factory_id") @db.Uuid
+  newUnitCost          Decimal?               @map("new_unit_cost")
+  newMoq               Int?                   @map("new_moq")
+  newCbmCarton         Decimal?               @map("new_cbm_carton")
+  newUnitsCarton       Int?                   @map("new_units_carton")
+  reason               String?
+  expectedFirstPoDate  DateTime?              @map("expected_first_po_date") @db.Date
+  status               VendorTransitionStatus @default(pending)
+  createdById          String?                @map("created_by_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  sku         Sku      @relation(fields: [skuId], references: [id])
+  fromFactory Factory? @relation("TransitionFromFactory", fields: [fromFactoryId], references: [id])
+  toFactory   Factory? @relation("TransitionToFactory",   fields: [toFactoryId],   references: [id])
+
+  @@index([skuId, status])
+  @@index([status])
+  @@map("pending_vendor_transitions")
 }
 
 /// A purchase order placed with a factory.
@@ -268,7 +358,7 @@ model PoLineItem {
 /// Physical or logical locations where inventory is held.
 model InventoryLocation {
   id           String       @id @default(uuid()) @db.Uuid
-  name         String                               // e.g. "Woodinville Warehouse", "Amazon 1P"
+  name         String                               // e.g. "Woodinville Warehouse", "Amazon FC" (FC = 1P + DI combined)
   locationType LocationType @map("location_type")
   isActive     Boolean      @default(true) @map("is_active")
 

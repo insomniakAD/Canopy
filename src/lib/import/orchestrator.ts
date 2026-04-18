@@ -21,6 +21,8 @@ import { processAmazonForecast } from "./process-amazon-forecast";
 import { processAsinMapping } from "./process-asin-mapping";
 import { processPurchaseOrders } from "./process-purchase-orders";
 import { processDiOrders } from "./process-di-orders";
+import { processKitComposition } from "./process-kit-composition";
+import { processItemUpdate } from "./process-item-update";
 
 export interface ImportRequest {
   buffer: Buffer;
@@ -77,19 +79,37 @@ export async function runImport(
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Amazon reports have metadata in row 0, headers in row 1
+    // Some imports are not spreadsheets and need the raw buffer:
+    //   - wds_inventory: STKSTATUS.txt is fixed-width plain text
+    //   - kit_composition: kititems.csv uses positional columns (B/F/H)
+    //   - asin_mapping: reads a specific sheet ("custpmatrix") by name
+    const rawBufferTypes = new Set<ImportType>([
+      "wds_inventory",
+      "kit_composition",
+      "asin_mapping",
+      "item_update",
+    ]);
+
+    // Amazon reports that have metadata in row 0, headers in row 1.
+    // amazon_vendor_central (Inventory Health CSV) has headers in row 0 — excluded.
     const isAmazonReport = [
       "amazon_sales",
-      "amazon_vendor_central",
       "amazon_forecast",
     ].includes(importType);
 
-    const headerRow = isAmazonReport ? 1 : 0;
-    const { headers, rows } = parseSpreadsheet(buffer, fileName, { headerRow });
+    // Only parse spreadsheet up front for types that use header-based columns.
+    let headers: string[] = [];
+    let rows: import("./types").SpreadsheetRow[] = [];
+    if (!rawBufferTypes.has(importType)) {
+      const headerRow = isAmazonReport ? 1 : 0;
+      const parsed = parseSpreadsheet(buffer, fileName, { headerRow });
+      headers = parsed.headers;
+      rows = parsed.rows;
+    }
 
     switch (importType) {
       case "wds_inventory":
-        result = await processWdsInventory(db, rows, batch.id, today);
+        result = await processWdsInventory(db, buffer, batch.id, today);
         break;
 
       case "wds_monthly_sales":
@@ -106,12 +126,14 @@ export async function runImport(
         result = await processAmazonVendorCentral(db, rows, batch.id, today);
         break;
 
-      case "amazon_forecast":
-        result = await processAmazonForecast(db, headers, rows, batch.id, today);
+      case "amazon_forecast": {
+        const meta = parseAmazonMeta(buffer);
+        result = await processAmazonForecast(db, headers, rows, batch.id, today, meta);
         break;
+      }
 
       case "asin_mapping":
-        result = await processAsinMapping(db, rows, batch.id);
+        result = await processAsinMapping(db, buffer, batch.id);
         break;
 
       case "purchase_orders":
@@ -120,6 +142,14 @@ export async function runImport(
 
       case "di_orders":
         result = await processDiOrders(db, rows, batch.id);
+        break;
+
+      case "kit_composition":
+        result = await processKitComposition(db, buffer, batch.id);
+        break;
+
+      case "item_update":
+        result = await processItemUpdate(db, buffer, batch.id);
         break;
 
       default:

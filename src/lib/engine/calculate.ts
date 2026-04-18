@@ -113,7 +113,9 @@ export async function runCalculations(
 
     if (totalAmazonVelocity > 0) {
       amazonDoi = await calculateAmazonDoi(
-        db, sku.id, sku.tier, demand.channelVelocity, inventory.onHand.amazon1p
+        db, sku.id, sku.tier, demand.channelVelocity,
+        inventory.onHand.amazon1p,
+        inventory.onHand.woodinville
       );
     }
 
@@ -191,7 +193,9 @@ export async function runCalculationForSku(
 
   if (totalAmazonVelocity > 0) {
     amazonDoi = await calculateAmazonDoi(
-      db, sku.id, sku.tier, demand.channelVelocity, inventory.onHand.amazon1p
+      db, sku.id, sku.tier, demand.channelVelocity,
+      inventory.onHand.amazon1p,
+      inventory.onHand.woodinville
     );
   }
 

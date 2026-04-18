@@ -2,6 +2,11 @@ import { db } from "@/lib/db";
 import { Card, StatCard } from "@/components/ui";
 import { Badge, TierBadge } from "@/components/ui";
 import Link from "next/link";
+import {
+  calculateForecastDrops,
+  calculateSalesVelocityDrops,
+  loadDropAlertSettings,
+} from "@/lib/engine/drop-alerts";
 
 // Helpers -----------------------------------------------------------------
 
@@ -73,6 +78,12 @@ async function loadDashboard() {
       .sort((a, b) => Math.abs(Number(b.forecastVariancePct)) - Math.abs(Number(a.forecastVariancePct)))
       .slice(0, 5);
 
+    // V2: Drop-signal alerts — Amazon forecast pull-back + sales velocity softening
+    const dropSettings = await loadDropAlertSettings(db);
+    const asOf = new Date();
+    const forecastDrops = (await calculateForecastDrops(db, asOf, dropSettings)).slice(0, 5);
+    const velocityDrops = (await calculateSalesVelocityDrops(db, asOf, dropSettings)).slice(0, 5);
+
     return {
       ok: true as const,
       skuCount,
@@ -87,6 +98,9 @@ async function loadDashboard() {
       doiAlerts,
       diAlerts,
       forecastAlerts,
+      forecastDrops,
+      velocityDrops,
+      dropSettings,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -133,6 +147,9 @@ export default async function DashboardPage() {
     doiAlerts,
     diAlerts,
     forecastAlerts,
+    forecastDrops,
+    velocityDrops,
+    dropSettings,
   } = data;
 
   const hasRecs = orderCount + watchCount + dnoCount > 0;
@@ -312,6 +329,78 @@ export default async function DashboardPage() {
               );
             })}
           </div>
+        </Card>
+      )}
+
+      {/* V2: Amazon Forecast Pull-Back */}
+      {forecastDrops.length > 0 && (
+        <Card
+          title="Amazon Forecast Pull-Back"
+          subtitle={`Amazon cut its next-${dropSettings.forecastWindowWeeks}w forecast by ≥${dropSettings.forecastDropPct}% vs. the prior snapshot`}
+          className="mb-8"
+        >
+          <div className="space-y-2">
+            {forecastDrops.map((d) => (
+              <div key={d.skuId} className="flex items-center justify-between px-4 py-2.5 bg-[var(--c-warning-bg)] rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Link href={`/skus/${d.skuId}`} className="font-semibold text-sm text-[var(--c-accent)] hover:underline">
+                    {d.skuCode}
+                  </Link>
+                  <span className="text-xs text-[var(--c-text-secondary)] truncate max-w-[200px]">{d.skuName}</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="font-mono text-[var(--c-text-secondary)]">
+                    {d.previousWindowUnits.toLocaleString()} → {d.currentWindowUnits.toLocaleString()} units
+                  </span>
+                  <Badge variant="warning">-{d.dropPct.toFixed(0)}%</Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+          <details className="mt-3 text-xs text-[var(--c-text-tertiary)]">
+            <summary className="cursor-pointer hover:text-[var(--c-text-secondary)]">How this is calculated, why it matters, what to do</summary>
+            <div className="mt-2 space-y-1.5 pl-4">
+              <p><strong>Calc:</strong> Sum Amazon&apos;s forecast units over the next {dropSettings.forecastWindowWeeks} weeks from the latest snapshot vs. the previous distinct snapshot (≥3 days older). Flag when the drop is ≥{dropSettings.forecastDropPct}% and the prior sum was ≥10 units.</p>
+              <p><strong>Why:</strong> A near-term cut is Amazon signaling reduced pull-through — often because DI already covers the gap, or their own demand forecast softened.</p>
+              <p><strong>Action:</strong> Consider delaying the next PO, shrinking quantity, or holding capacity for a different SKU. Validate against your own sales-velocity trend before reacting. Thresholds are editable in <Link href="/settings" className="text-[var(--c-accent)] hover:underline">Settings</Link>.</p>
+            </div>
+          </details>
+        </Card>
+      )}
+
+      {/* V2: Sales Velocity Drop */}
+      {velocityDrops.length > 0 && (
+        <Card
+          title="Sales Velocity Drop"
+          subtitle={`Recent ${dropSettings.velocityRecentWeeks}w weekly sales ≥${dropSettings.velocityDropPct}% below the ${dropSettings.velocityBaselineWeeks}w baseline`}
+          className="mb-8"
+        >
+          <div className="space-y-2">
+            {velocityDrops.map((d) => (
+              <div key={d.skuId} className="flex items-center justify-between px-4 py-2.5 bg-[var(--c-info-bg-light)] rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Link href={`/skus/${d.skuId}`} className="font-semibold text-sm text-[var(--c-accent)] hover:underline">
+                    {d.skuCode}
+                  </Link>
+                  <span className="text-xs text-[var(--c-text-secondary)] truncate max-w-[200px]">{d.skuName}</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="font-mono text-[var(--c-text-secondary)]">
+                    {d.baselineWeeklyUnits.toFixed(1)} → {d.recentWeeklyUnits.toFixed(1)} units/wk
+                  </span>
+                  <Badge variant="warning">-{d.dropPct.toFixed(0)}%</Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+          <details className="mt-3 text-xs text-[var(--c-text-tertiary)]">
+            <summary className="cursor-pointer hover:text-[var(--c-text-secondary)]">How this is calculated, why it matters, what to do</summary>
+            <div className="mt-2 space-y-1.5 pl-4">
+              <p><strong>Calc:</strong> Pro-rate each sales record that overlaps the trailing {dropSettings.velocityRecentWeeks}w and {dropSettings.velocityBaselineWeeks}w windows, then compare units/week. Flag when recent is ≥{dropSettings.velocityDropPct}% below baseline and baseline is ≥2 units/wk.</p>
+              <p><strong>Why:</strong> Independent of Amazon&apos;s forecast — this is what actually shipped. A drop here means demand is softening now, so the next reorder should carry less.</p>
+              <p><strong>Action:</strong> Reduce the next PO quantity or delay it. Check whether the drop is channel-specific (1P vs DI vs domestic) on the SKU detail. Thresholds are editable in <Link href="/settings" className="text-[var(--c-accent)] hover:underline">Settings</Link>.</p>
+            </div>
+          </details>
         </Card>
       )}
 

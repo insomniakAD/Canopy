@@ -33,6 +33,12 @@ const BLEND_WEIGHTS = {
 /**
  * Calculate demand velocity for a single SKU.
  * Pulls from sales_history and combines all channels.
+ *
+ * If this SKU is a Kit Component (i.e. a Child in one or more kits), kit-
+ * implied demand is added: for each Parent it belongs to, the Parent's sales
+ * × qty_per_kit is added to this Child's domestic demand. Parent kit sales
+ * are recorded as 1 unit per kit in the WDS export (not cartons), so the
+ * multiplier is simply qty_per_kit from kit_components.
  */
 export async function calculateDemandForSku(
   db: PrismaClient,
@@ -42,9 +48,15 @@ export async function calculateDemandForSku(
   seasonalityFactor: number,
   amazonForecastWeekly: number | null
 ): Promise<SkuDemandProfile> {
-  const threeMonth = await calculatePeriodVelocity(db, skuId, 13, asOfDate);
-  const sixMonth = await calculatePeriodVelocity(db, skuId, 26, asOfDate);
-  const twelveMonth = await calculatePeriodVelocity(db, skuId, 52, asOfDate);
+  // Pre-load kit memberships (if any) so every period query can reuse them.
+  const kitMemberships = await db.kitComponent.findMany({
+    where: { childSkuId: skuId },
+    select: { parentSkuId: true, quantityPerKit: true },
+  });
+
+  const threeMonth = await calculatePeriodVelocity(db, skuId, 13, asOfDate, kitMemberships);
+  const sixMonth = await calculatePeriodVelocity(db, skuId, 26, asOfDate, kitMemberships);
+  const twelveMonth = await calculatePeriodVelocity(db, skuId, 52, asOfDate, kitMemberships);
 
   // --- Blended velocity ---
   // Uses whichever periods have data. Falls back gracefully.
@@ -90,13 +102,14 @@ async function calculatePeriodVelocity(
   db: PrismaClient,
   skuId: string,
   periodWeeks: number,
-  asOfDate: Date
+  asOfDate: Date,
+  kitMemberships: { parentSkuId: string; quantityPerKit: number }[] = []
 ): Promise<PeriodVelocity | null> {
   const endDate = asOfDate;
   const startDate = new Date(asOfDate);
   startDate.setDate(startDate.getDate() - periodWeeks * 7);
 
-  // Find all sales records that overlap this period
+  // Find all direct sales records that overlap this period
   const records = await db.salesRecord.findMany({
     where: {
       skuId,
@@ -105,8 +118,6 @@ async function calculatePeriodVelocity(
     },
     orderBy: { periodStartDate: "asc" },
   });
-
-  if (records.length === 0) return null;
 
   // Pro-rate and sum
   let totalUnits = 0;
@@ -139,6 +150,49 @@ async function calculatePeriodVelocity(
       channelUnits[channel] += proRatedUnits;
     }
   }
+
+  // ---- Kit-implied demand ----
+  // For each Parent this SKU is a component of, pull Parent's sales in the
+  // window and add (Parent units × qty_per_kit) to this Child's domestic bucket.
+  // No revenue is attributed for kit-implied sales — revenue is booked against
+  // the Parent, not the Children.
+  let kitImpliedUnits = 0;
+  if (kitMemberships.length > 0) {
+    const parentIds = kitMemberships.map((k) => k.parentSkuId);
+    const parentRecords = await db.salesRecord.findMany({
+      where: {
+        skuId: { in: parentIds },
+        periodEndDate: { gte: startDate },
+        periodStartDate: { lte: endDate },
+      },
+    });
+
+    const qtyByParent = new Map(kitMemberships.map((k) => [k.parentSkuId, k.quantityPerKit]));
+
+    for (const rec of parentRecords) {
+      const qtyPerKit = qtyByParent.get(rec.skuId) ?? 0;
+      if (qtyPerKit <= 0) continue;
+
+      const recStart = rec.periodStartDate > startDate ? rec.periodStartDate : startDate;
+      const recEnd = rec.periodEndDate < endDate ? rec.periodEndDate : endDate;
+      const overlapDays = daysBetween(recStart, recEnd) + 1;
+      const recordDays = daysBetween(rec.periodStartDate, rec.periodEndDate) + 1;
+      if (overlapDays <= 0 || recordDays <= 0) continue;
+
+      const fraction = Math.min(overlapDays / recordDays, 1);
+      const impliedKits = rec.quantity * fraction;
+      const impliedUnits = Math.round(impliedKits * qtyPerKit);
+
+      kitImpliedUnits += impliedUnits;
+    }
+  }
+
+  totalUnits += kitImpliedUnits;
+  channelUnits.domestic += kitImpliedUnits; // Kits ship via Winsome DF / domestic.
+
+  // If there is no signal at all (no direct sales AND no kit-implied demand),
+  // return null so the blender treats this period as "no data".
+  if (records.length === 0 && kitImpliedUnits === 0) return null;
 
   const weeklyVelocity = periodWeeks > 0 ? totalUnits / periodWeeks : 0;
 

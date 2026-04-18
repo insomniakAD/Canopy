@@ -6,7 +6,7 @@
 // Three categories of inventory:
 //
 // 1. ON-HAND — physically available today
-//    Woodinville Warehouse + Amazon 1P
+//    Woodinville Warehouse + Amazon FC (1P + DI combined)
 //
 // 2. INBOUND — ordered but not yet received
 //    Open POs in stages: ordered, in_production, on_water, at_port
@@ -29,6 +29,10 @@ const INBOUND_STATUSES = ["ordered", "in_production", "on_water", "at_port"] as 
 /**
  * Calculate the full inventory position for one SKU.
  *
+ * Kit Parents are handled separately — they have no physical inventory of
+ * their own. Their "effective on-hand" is derived from their Children at the
+ * WDS Domestic location only (Amazon WH does not carry kits).
+ *
  * @param db - Database client
  * @param skuId - Which SKU
  * @param weeklyDemand - Seasonally-adjusted weekly velocity
@@ -43,6 +47,17 @@ export async function calculateInventoryForSku(
   leadTimeDays: number,
   asOfDate: Date
 ): Promise<SkuInventoryPosition> {
+  // -------------------------------------------------------
+  // 0. KIT PARENT? (virtual SKU — derive on-hand from Children)
+  // -------------------------------------------------------
+  const skuRow = await db.sku.findUnique({
+    where: { id: skuId },
+    select: { isKitParent: true },
+  });
+  if (skuRow?.isKitParent) {
+    return calculateParentInventory(db, skuId, skuCode, weeklyDemand, leadTimeDays, asOfDate);
+  }
+
   // -------------------------------------------------------
   // 1. ON-HAND INVENTORY (latest snapshot per location)
   // -------------------------------------------------------
@@ -60,7 +75,7 @@ export async function calculateInventoryForSku(
     const qty = snap.quantityAvailable;
     if (snap.location.name === "Woodinville Warehouse") {
       woodinville = qty;
-    } else if (snap.location.name === "Amazon 1P") {
+    } else if (snap.location.name === "Amazon FC") {
       amazon1p = qty;
     }
   }
@@ -159,6 +174,86 @@ export async function calculateInventoryForSku(
     },
     weeksOfSupply: Math.round(weeksOfSupply * 10) / 10, // 1 decimal
     projectedStockoutDate,
+  };
+}
+
+/**
+ * Inventory position for a Kit Parent SKU.
+ *
+ * Parents are virtual — they hold no physical stock. Their effective on-hand
+ * is the most restrictive Child's coverage:
+ *   effective_parent_on_hand = MIN( floor(child.WDS_on_hand / qty_per_kit) )
+ *     across all Children
+ *
+ * Only WDS Domestic is considered (Amazon WH does not carry kits).
+ * Parents are never ordered as POs — inbound is always zero; "projected at
+ * arrival" is simply current effective on-hand minus lead-time demand.
+ */
+async function calculateParentInventory(
+  db: PrismaClient,
+  skuId: string,
+  skuCode: string,
+  weeklyDemand: number,
+  leadTimeDays: number,
+  asOfDate: Date
+): Promise<SkuInventoryPosition> {
+  const components = await db.kitComponent.findMany({
+    where: { parentSkuId: skuId },
+    select: { childSkuId: true, quantityPerKit: true },
+  });
+
+  let effectiveOnHand = 0;
+
+  if (components.length > 0) {
+    // Find the WDS Domestic location once.
+    const wdsLocation = await db.inventoryLocation.findFirst({
+      where: { name: "Woodinville Warehouse" },
+      select: { id: true },
+    });
+
+    let minKits = Infinity;
+    for (const c of components) {
+      let childQty = 0;
+      if (wdsLocation) {
+        const snap = await db.inventorySnapshot.findFirst({
+          where: { skuId: c.childSkuId, locationId: wdsLocation.id },
+          orderBy: { snapshotDate: "desc" },
+          select: { quantityAvailable: true },
+        });
+        childQty = snap?.quantityAvailable ?? 0;
+      }
+      const kitsFromChild = c.quantityPerKit > 0 ? Math.floor(childQty / c.quantityPerKit) : 0;
+      if (kitsFromChild < minKits) minKits = kitsFromChild;
+    }
+    effectiveOnHand = isFinite(minKits) ? minKits : 0;
+  }
+
+  const leadTimeWeeks = leadTimeDays / 7;
+  const leadTimeDemand = Math.round(weeklyDemand * leadTimeWeeks);
+  const inventoryAtArrival = effectiveOnHand - leadTimeDemand;
+
+  const weeksOfSupply = weeklyDemand > 0 ? effectiveOnHand / weeklyDemand : 999;
+
+  return {
+    skuId,
+    skuCode,
+    onHand: {
+      woodinville: effectiveOnHand,
+      amazon1p: 0, // Kit Parents are not carried at Amazon WH
+      total: effectiveOnHand,
+    },
+    inbound: {
+      arriving: [],
+      totalUnits: 0,
+      arrivingBeforeCutoff: 0,
+    },
+    projected: {
+      leadTimeDays,
+      leadTimeDemand,
+      inventoryAtArrival,
+    },
+    weeksOfSupply: Math.round(weeksOfSupply * 10) / 10,
+    projectedStockoutDate: null, // Derived from Children in the reorder engine, not here
   };
 }
 

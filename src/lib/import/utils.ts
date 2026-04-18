@@ -21,10 +21,13 @@ export function hashFileBuffer(buffer: Buffer): string {
 export function parseSpreadsheet(
   buffer: Buffer,
   fileName: string,
-  options?: { headerRow?: number; sheetIndex?: number }
+  options?: { headerRow?: number; sheetIndex?: number; sheetName?: string }
 ): { headers: string[]; rows: SpreadsheetRow[] } {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
-  const sheetName = workbook.SheetNames[options?.sheetIndex ?? 0];
+  const sheetName =
+    options?.sheetName && workbook.SheetNames.includes(options.sheetName)
+      ? options.sheetName
+      : workbook.SheetNames[options?.sheetIndex ?? 0];
   const sheet = workbook.Sheets[sheetName];
 
   const headerRow = options?.headerRow ?? 0;
@@ -59,6 +62,38 @@ export function parseSpreadsheet(
   }
 
   return { headers, rows };
+}
+
+/**
+ * Parse a spreadsheet (Excel or CSV) into a raw 2D array — no header mapping.
+ * Use this when you need positional column access (e.g., "Col B" = index 1).
+ * Returns rows as arrays of cell values. The first row typically contains headers.
+ */
+export function parseSpreadsheetRaw(
+  buffer: Buffer,
+  options?: { sheetIndex?: number; sheetName?: string }
+): (string | number | null)[][] {
+  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
+  const sheetName =
+    options?.sheetName && workbook.SheetNames.includes(options.sheetName)
+      ? options.sheetName
+      : workbook.SheetNames[options?.sheetIndex ?? 0];
+  const sheet = workbook.Sheets[sheetName];
+
+  const raw: (string | number | Date | null)[][] = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    raw: false,
+    defval: null,
+  });
+
+  // Normalize Date cells to ISO strings
+  return raw.map((row) =>
+    row.map((cell) => {
+      if (cell === null || cell === undefined) return null;
+      if (cell instanceof Date) return cell.toISOString();
+      return cell as string | number;
+    })
+  );
 }
 
 /**

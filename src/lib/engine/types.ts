@@ -76,9 +76,11 @@ export interface InboundShipment {
 
 /** Amazon DOI (Days of Inventory) analysis for one SKU */
 export interface AmazonDoiAnalysis {
-  amazonOnHand: number;               // Amazon's current inventory
-  amazonDailyVelocity: number;        // Amazon sell-through rate (units/day)
-  amazonDoi: number;                   // Days of inventory at Amazon
+  amazonOnHand: number;               // Amazon Warehouse on-hand (1P only)
+  woodinvilleOnHand: number;           // WDS Domestic on-hand
+  combinedOnHand: number;              // Amazon WH + WDS Domestic (DOI numerator)
+  amazonDailyVelocity: number;         // Amazon sell-through rate (units/day)
+  amazonDoi: number;                   // Days of inventory = combined on-hand / Amazon daily
   amazonTargetDoi: number;             // From tier rules
   woodinvilleExposure: number;         // Units/week Woodinville must cover for Amazon
   diSharePct: number;                  // % of Amazon demand fulfilled via DI

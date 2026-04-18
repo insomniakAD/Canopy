@@ -1,20 +1,21 @@
 // ============================================================================
 // Amazon Days of Inventory (DOI) Calculator
 // ============================================================================
-// Calculates how many days of inventory Amazon currently holds for a SKU.
+// Calculates how many days of stock are available to cover Amazon sell-through.
 //
-// DOI = Amazon On-Hand / Amazon Daily Sell-Through
+// DOI = (Amazon Warehouse on-hand + WDS Domestic on-hand) / Amazon daily sell-through
+//
+// Why sum both locations:
+//   Winsome cannot freely transfer WDS stock to Amazon — Amazon issues POs on
+//   their own cadence. But WDS stock does fulfill Amazon DF orders AND is the
+//   backing pool that future 1P POs will pull from. So the combined pool is
+//   what ultimately covers Amazon-channel demand until the next factory run.
 //
 // Amazon DOI targets are set by tier (from SkuTierRule.amazonTargetDoi):
 //   A = 60 days, B = 50 days, C = 40 days, LP = 30 days
 //
-// IMPORTANT: Winsome cannot push inventory to Amazon — Amazon issues POs.
-// Low DOI is an awareness metric, not an action item. It means:
-//   - When Amazon DOES issue a PO, Winsome should have stock ready
-//   - If DOI is critically low, a large 1P PO may be coming
-//
-// Woodinville Exposure = how much weekly volume Woodinville must cover
-// for Amazon channels (1P + DF — not DI, since DI ships from factory).
+// Woodinville Exposure = weekly Amazon 1P + DF volume Woodinville must cover
+// (DI is excluded — DI ships directly from factory to Amazon).
 // ============================================================================
 
 import type { PrismaClient } from "@/generated/prisma/client";
@@ -30,13 +31,17 @@ const DEFAULT_DOI_TARGETS: Record<string, number> = {
 
 /**
  * Calculate Amazon DOI for a single SKU.
+ *
+ * @param amazonOnHand     Units in Amazon Warehouse (1P)
+ * @param woodinvilleOnHand Units in WDS Domestic (Woodinville Warehouse)
  */
 export async function calculateAmazonDoi(
   db: PrismaClient,
   skuId: string,
   tier: string,
   channelVelocity: { amazon1p: number; amazonDf: number; amazonDi: number; domestic: number },
-  amazonOnHand: number
+  amazonOnHand: number,
+  woodinvilleOnHand: number
 ): Promise<AmazonDoiAnalysis> {
   // Load tier rule for DOI target
   const tierRule = await db.skuTierRule.findUnique({ where: { tier: tier as "A" | "B" | "C" | "LP" } });
@@ -46,10 +51,13 @@ export async function calculateAmazonDoi(
   const totalAmazonWeekly = channelVelocity.amazon1p + channelVelocity.amazonDf + channelVelocity.amazonDi;
   const amazonDailyVelocity = totalAmazonWeekly / 7;
 
-  // DOI calculation
+  // Combined on-hand pool covering Amazon demand.
+  const combinedOnHand = Math.max(0, amazonOnHand) + Math.max(0, woodinvilleOnHand);
+
+  // DOI calculation — combined pool over Amazon sell-through.
   const amazonDoi = amazonDailyVelocity > 0
-    ? amazonOnHand / amazonDailyVelocity
-    : amazonOnHand > 0 ? 999 : 0;
+    ? combinedOnHand / amazonDailyVelocity
+    : combinedOnHand > 0 ? 999 : 0;
 
   // Woodinville exposure: 1P + DF volume (not DI — DI ships from factory)
   const woodinvilleExposure = channelVelocity.amazon1p + channelVelocity.amazonDf;
@@ -73,6 +81,8 @@ export async function calculateAmazonDoi(
 
   return {
     amazonOnHand,
+    woodinvilleOnHand,
+    combinedOnHand,
     amazonDailyVelocity: Math.round(amazonDailyVelocity * 10) / 10,
     amazonDoi: Math.round(amazonDoi * 10) / 10,
     amazonTargetDoi,

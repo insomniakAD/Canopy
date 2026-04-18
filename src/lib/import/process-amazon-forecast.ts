@@ -15,7 +15,7 @@
 // ============================================================================
 
 import type { PrismaClient } from "@/generated/prisma/client";
-import type { ImportSummary, ImportErrorDetail, SpreadsheetRow } from "./types";
+import type { ImportSummary, ImportErrorDetail, SpreadsheetRow, AmazonReportMeta } from "./types";
 import { parseForecastWeekHeader, toNumber } from "./utils";
 
 export async function processAmazonForecast(
@@ -23,11 +23,35 @@ export async function processAmazonForecast(
   headers: string[],
   rows: SpreadsheetRow[],
   batchId: string,
-  snapshotDate: Date
+  snapshotDate: Date,
+  meta: AmazonReportMeta
 ): Promise<ImportSummary> {
   const errors: ImportErrorDetail[] = [];
   let imported = 0;
   let skipped = 0;
+
+  // --- Validate: Canopy only uses the Mean forecast ---
+  // Amazon offers Mean, P70, P80, etc. as separate exports. Using a P-statistic
+  // in place of Mean would silently bias the entire purchasing plan.
+  if (meta.forecastStatistic && meta.forecastStatistic.toLowerCase() !== "mean") {
+    errors.push({
+      rowNumber: 0,
+      fieldName: "Forecasting Statistic",
+      errorType: "format_error",
+      message: `This file is a ${meta.forecastStatistic} forecast. Canopy only uses the Mean forecast. Re-export from Amazon with Forecasting Statistic = Mean.`,
+      rawValue: meta.forecastStatistic,
+    });
+    return {
+      batchId,
+      importType: "amazon_forecast",
+      fileName: "",
+      rowCount: rows.length,
+      rowsImported: 0,
+      rowsSkipped: 0,
+      rowsErrored: 1,
+      errors,
+    };
+  }
 
   // --- Identify week columns ---
   const weekColumns: {

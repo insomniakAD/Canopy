@@ -45,11 +45,20 @@ async function loadSkuDetail(skuId: string) {
   const sku = await db.sku.findUnique({
     where: { id: skuId },
     include: {
-      defaultFactory: { select: { name: true, country: true } },
+      defaultFactory: { select: { name: true, country: true, vendorCode: true } },
     },
   });
 
   if (!sku) return null;
+
+  // Pending vendor transition (at most one per SKU in "pending" state)
+  const pendingTransition = await db.pendingVendorTransition.findFirst({
+    where: { skuId, status: "pending" },
+    include: {
+      toFactory: { select: { name: true, country: true, vendorCode: true } },
+      fromFactory: { select: { name: true, country: true, vendorCode: true } },
+    },
+  });
 
   // Latest recommendation
   const rec = await db.reorderRecommendation.findFirst({
@@ -112,7 +121,7 @@ async function loadSkuDetail(skuId: string) {
     },
   });
 
-  return { sku, rec, demandMetrics, poLines, snapshots, forecasts, overrides };
+  return { sku, rec, demandMetrics, poLines, snapshots, forecasts, overrides, pendingTransition };
 }
 
 // Page --------------------------------------------------------------------
@@ -140,7 +149,7 @@ export default async function SkuDetailPage({
 
   if (!data) notFound();
 
-  const { sku, rec, demandMetrics, poLines, snapshots, forecasts, overrides } = data;
+  const { sku, rec, demandMetrics, poLines, snapshots, forecasts, overrides, pendingTransition } = data;
 
   // Deduplicate snapshots to latest per location
   const latestSnapshots = new Map<string, typeof snapshots[0]>();
@@ -165,6 +174,123 @@ export default async function SkuDetailPage({
         <p className="text-sm text-[var(--c-text-secondary)] mt-1">{sku.name}</p>
         {sku.asin && <p className="text-xs text-[var(--c-text-tertiary)] mt-0.5">ASIN: {sku.asin}</p>}
       </div>
+
+      {/* Pending vendor transition banner + diff */}
+      {pendingTransition && (
+        <Card className="mb-6 border-[var(--c-warning-border)]">
+          <div className="rounded-lg bg-[var(--c-warning-bg)] px-4 py-3 mb-4">
+            <p className="text-sm font-semibold text-[var(--c-warning-text)]">
+              Vendor transition pending
+            </p>
+            <p className="text-xs text-[var(--c-warning-text)] mt-0.5">
+              The next PO on this SKU will use the new vendor. Current
+              production values below stay in effect until that PO lands.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="rounded-lg border border-[var(--c-border)] p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-[var(--c-text-secondary)] mb-2">
+                Current
+              </p>
+              <dl className="space-y-1.5">
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[var(--c-text-secondary)]">Vendor</dt>
+                  <dd className="text-right">
+                    {sku.defaultFactory
+                      ? `${sku.defaultFactory.vendorCode ?? "—"} · ${sku.defaultFactory.name}`
+                      : "—"}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[var(--c-text-secondary)]">Country</dt>
+                  <dd className="text-right">
+                    {sku.defaultFactory?.country ?? "—"}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[var(--c-text-secondary)]">Unit Cost</dt>
+                  <dd className="text-right font-mono">
+                    {sku.unitCostUsd != null ? `$${Number(sku.unitCostUsd).toFixed(2)}` : "—"}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[var(--c-text-secondary)]">MOQ</dt>
+                  <dd className="text-right font-mono">{fmtInt(sku.moq)}</dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[var(--c-text-secondary)]">CBM / Carton</dt>
+                  <dd className="text-right font-mono">
+                    {sku.cbmPerCarton != null ? Number(sku.cbmPerCarton).toFixed(3) : "—"}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[var(--c-text-secondary)]">Units / Carton</dt>
+                  <dd className="text-right font-mono">{fmtInt(sku.unitsPerCarton)}</dd>
+                </div>
+              </dl>
+            </div>
+            <div className="rounded-lg border border-[var(--c-warning-border)] bg-[var(--c-warning-bg-light)] p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-[var(--c-warning-text)] mb-2">
+                Next (pending)
+              </p>
+              <dl className="space-y-1.5">
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[var(--c-text-secondary)]">Vendor</dt>
+                  <dd className="text-right">
+                    {pendingTransition.toFactory
+                      ? `${pendingTransition.toFactory.vendorCode ?? pendingTransition.newVendorCode} · ${pendingTransition.toFactory.name}`
+                      : pendingTransition.newVendorCode}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[var(--c-text-secondary)]">Country</dt>
+                  <dd className="text-right">
+                    {pendingTransition.toFactory?.country ?? "—"}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[var(--c-text-secondary)]">Unit Cost</dt>
+                  <dd className="text-right font-mono">
+                    {pendingTransition.newUnitCost != null
+                      ? `$${Number(pendingTransition.newUnitCost).toFixed(2)}`
+                      : "—"}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[var(--c-text-secondary)]">MOQ</dt>
+                  <dd className="text-right font-mono">
+                    {fmtInt(pendingTransition.newMoq)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[var(--c-text-secondary)]">CBM / Carton</dt>
+                  <dd className="text-right font-mono">
+                    {pendingTransition.newCbmCarton != null
+                      ? Number(pendingTransition.newCbmCarton).toFixed(3)
+                      : "—"}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[var(--c-text-secondary)]">Units / Carton</dt>
+                  <dd className="text-right font-mono">
+                    {fmtInt(pendingTransition.newUnitsCarton)}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+          {pendingTransition.reason && (
+            <p className="text-xs text-[var(--c-text-secondary)] mt-3">
+              Reason: {pendingTransition.reason}
+            </p>
+          )}
+          {pendingTransition.expectedFirstPoDate && (
+            <p className="text-xs text-[var(--c-text-secondary)] mt-1">
+              Expected first PO: {fmtDate(pendingTransition.expectedFirstPoDate)}
+            </p>
+          )}
+        </Card>
+      )}
 
       {/* Summary row */}
       {rec && (
@@ -281,6 +407,14 @@ export default async function SkuDetailPage({
                 </li>
               )}
             </ul>
+
+            {pendingTransition && (
+              <p className="text-sm italic text-[var(--c-text-secondary)] mb-4">
+                Vendor transition pending. This recommended order uses the
+                current vendor&apos;s MOQ, CBM/carton, and unit cost. The new
+                vendor&apos;s terms take effect on the PO after this one.
+              </p>
+            )}
 
             {/* Full Analysis (collapsible) */}
             <div className="border-t border-[var(--c-border)] pt-4">

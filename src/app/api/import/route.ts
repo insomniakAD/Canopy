@@ -23,6 +23,9 @@ const VALID_IMPORT_TYPES: ImportType[] = [
   "amazon_forecast",
   "purchase_orders",
   "asin_mapping",
+  "di_orders",
+  "kit_composition",
+  "item_update",
 ];
 
 export async function POST(request: NextRequest) {
@@ -55,10 +58,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate file type
+    // STKSTATUS (wds_inventory) is a plain-text Oracle report (.txt).
     const fileName = file.name.toLowerCase();
-    if (!fileName.endsWith(".xlsx") && !fileName.endsWith(".csv") && !fileName.endsWith(".xls")) {
+    const allowedExts = [".xlsx", ".xls", ".csv", ".txt"];
+    if (!allowedExts.some((ext) => fileName.endsWith(ext))) {
       return Response.json(
-        { error: `Unsupported file type. Upload .xlsx, .xls, or .csv files.` },
+        { error: `Unsupported file type. Upload .xlsx, .xls, .csv, or .txt files.` },
         { status: 400 }
       );
     }

@@ -236,6 +236,32 @@ export async function processPurchaseOrders(
         });
       }
 
+      // Auto-consume a pending vendor transition if this PO matches it.
+      // A PO landing on the new vendor confirms the switch: apply the
+      // captured new cost/MOQ/CBM/units to the SKU, move defaultFactory,
+      // and flip the transition to "consumed".
+      const pending = await db.pendingVendorTransition.findFirst({
+        where: {
+          skuId: sku.id,
+          status: "pending",
+          toFactoryId: po.factoryId,
+        },
+      });
+      if (pending) {
+        const skuUpdate: Record<string, unknown> = {
+          defaultFactoryId: po.factoryId,
+        };
+        if (pending.newUnitCost != null) skuUpdate.unitCostUsd = pending.newUnitCost;
+        if (pending.newMoq != null) skuUpdate.moq = pending.newMoq;
+        if (pending.newCbmCarton != null) skuUpdate.cbmPerCarton = pending.newCbmCarton;
+        if (pending.newUnitsCarton != null) skuUpdate.unitsPerCarton = pending.newUnitsCarton;
+        await db.sku.update({ where: { id: sku.id }, data: skuUpdate });
+        await db.pendingVendorTransition.update({
+          where: { id: pending.id },
+          data: { status: "consumed" },
+        });
+      }
+
       imported++;
     }
   }

@@ -156,7 +156,7 @@ export async function buildContainerPlans(
       const factory = await db.factory.findUnique({ where: { id: factoryId } });
       if (factory) {
         factoryName = factory.name;
-        country = factory.country;
+        country = factory.country ?? "unknown";
       }
     }
 

@@ -10,7 +10,7 @@
 //   3. Creates lead time rules per country (China, Malaysia, Thailand)
 //   4. Creates container rules (40GP, 40HQ)
 //   5. Creates 12 monthly seasonality factors (all start at 1.0 — you fill in)
-//   6. Creates 2 default inventory locations (Woodinville + Amazon 1P)
+//   6. Creates 2 default inventory locations (Woodinville + Amazon FC)
 //   7. Creates an admin user for initial access
 // ============================================================================
 
@@ -207,7 +207,7 @@ async function main() {
       locationType: LocationType.domestic_warehouse,
     },
     {
-      name: "Amazon 1P",
+      name: "Amazon FC",
       locationType: LocationType.amazon_warehouse,
     },
   ];
@@ -220,7 +220,7 @@ async function main() {
       await prisma.inventoryLocation.create({ data: loc });
     }
   }
-  console.log("  ✓ 2 inventory locations created (Woodinville + Amazon 1P)\n");
+  console.log("  ✓ 2 inventory locations created (Woodinville + Amazon FC)\n");
 
   // -------------------------------------------------------
   // 7. Admin User
@@ -248,7 +248,31 @@ async function main() {
       key: "forecastDropAlertPct",
       value: "15",
       label: "Forecast Drop Alert %",
-      description: "Alert when Amazon forecast drops by this % compared to previous import.",
+      description: "Flag SKU when Amazon's next-N-week forecast falls by ≥ this % vs. the previous snapshot.",
+    },
+    {
+      key: "forecastDropWindowWeeks",
+      value: "8",
+      label: "Forecast Drop Window (weeks)",
+      description: "Number of upcoming weeks summed when comparing the latest Amazon forecast to the previous snapshot.",
+    },
+    {
+      key: "salesVelocityDropAlertPct",
+      value: "20",
+      label: "Sales Velocity Drop Alert %",
+      description: "Flag SKU when recent weekly sales velocity falls by ≥ this % vs. the longer baseline window.",
+    },
+    {
+      key: "salesVelocityDropRecentWeeks",
+      value: "4",
+      label: "Velocity Drop Recent Window (weeks)",
+      description: "Length of the recent trailing window used to compute current weekly sales velocity.",
+    },
+    {
+      key: "salesVelocityDropBaselineWeeks",
+      value: "13",
+      label: "Velocity Drop Baseline Window (weeks)",
+      description: "Length of the longer trailing window used as baseline weekly sales velocity.",
     },
     {
       key: "diHealthCadenceMultiplier",
@@ -277,7 +301,7 @@ async function main() {
       create: setting,
     });
   }
-  console.log("  ✓ 4 system settings created (V2 alert thresholds)\n");
+  console.log(`  ✓ ${systemSettings.length} system settings created (V2 alert thresholds)\n`);
 
   // -------------------------------------------------------
   // Done
@@ -289,7 +313,7 @@ async function main() {
   console.log("  • 3 lead time rules (China/Malaysia/Thailand)");
   console.log("  • 2 container rules (40GP/40HQ)");
   console.log("  • 12 seasonality factors (all 1.0 — ready for your input)");
-  console.log("  • 2 inventory locations (Woodinville Warehouse + Amazon 1P)");
+  console.log("  • 2 inventory locations (Woodinville Warehouse + Amazon FC)");
   console.log("  • 1 admin user");
   console.log("  • 4 system settings (V2 alert thresholds)");
 }

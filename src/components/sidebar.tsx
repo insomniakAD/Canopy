@@ -9,6 +9,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: "grid" },
   { href: "/import", label: "Import Data", icon: "upload" },
+  { href: "/items", label: "Items & Vendors", icon: "package" },
   { href: "/skus", label: "SKU Planning", icon: "package" },
   { href: "/containers", label: "Container Planning", icon: "truck" },
   { href: "/amazon-doi", label: "Amazon DOI", icon: "signal" },

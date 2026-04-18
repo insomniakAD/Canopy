@@ -61,10 +61,30 @@ export async function runRecommendations(
     data: { isCurrent: false },
   });
 
-  // --- Step 4: Generate recommendation for each SKU ---
+  // --- Step 4: Generate recommendation for each eligible SKU ---
+  // Exclusions:
+  //   - Discontinued SKUs (status !== "active") — already filtered upstream
+  //     by runCalculations, but we double-check here for safety.
+  //   - Kit Parents (isKitParent === true) — Parents are virtual sellable
+  //     listings with no physical inventory; they are never manufactured,
+  //     so reorder math doesn't apply. Component Children and Standalone
+  //     SKUs cover the real ordering.
+  const skuMeta = await db.sku.findMany({
+    where: { id: { in: calcResults.results.map((r) => r.demand.skuId) } },
+    select: { id: true, status: true, isKitParent: true },
+  });
+  const skuMetaById = new Map(skuMeta.map((s) => [s.id, s]));
+
   const recommendations: SkuRecommendation[] = [];
+  let excludedCount = 0;
 
   for (const calc of calcResults.results) {
+    const meta = skuMetaById.get(calc.demand.skuId);
+    if (!meta || meta.status !== "active" || meta.isKitParent) {
+      excludedCount++;
+      continue;
+    }
+
     const rec = await generateRecommendation(db, calc, tierConfigs, runDate);
     recommendations.push(rec);
 
@@ -97,7 +117,7 @@ export async function runRecommendations(
   return {
     runDate,
     skusProcessed: recommendations.length,
-    skusSkipped: calcResults.skusSkipped,
+    skusSkipped: calcResults.skusSkipped + excludedCount,
     recommendations,
     containerPlans,
     summary: {

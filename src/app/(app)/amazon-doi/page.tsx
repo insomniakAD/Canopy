@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/db";
 import { Card, Badge } from "@/components/ui";
 import Link from "next/link";
+import {
+  calculateForecastDrops,
+  loadDropAlertSettings,
+} from "@/lib/engine/drop-alerts";
 
 function DoiBadge({ doi, target }: { doi: number; target: number }) {
   if (doi <= 0) return <Badge variant="error">Out of Stock</Badge>;
@@ -43,6 +47,11 @@ export default async function AmazonDoiPage() {
     },
     orderBy: { amazonDoi: "asc" }, // Lowest DOI first (most urgent)
   });
+
+  // Forecast drop alerts — per-SKU map for the table chip
+  const dropSettings = await loadDropAlertSettings(prisma);
+  const forecastDrops = await calculateForecastDrops(prisma, new Date(), dropSettings);
+  const dropBySku = new Map(forecastDrops.map((d) => [d.skuId, d]));
 
   // Summary stats
   const totalSkus = recommendations.length;
@@ -108,6 +117,12 @@ export default async function AmazonDoiPage() {
                   <th className="px-4 py-2 font-medium text-right">Woodinville Exp.</th>
                   <th className="px-4 py-2 font-medium text-right">DI Share</th>
                   <th className="px-4 py-2 font-medium text-center">DI Health</th>
+                  <th
+                    className="px-4 py-2 font-medium text-center"
+                    title={`Flag when Amazon's next-${dropSettings.forecastWindowWeeks}w forecast falls ≥ ${dropSettings.forecastDropPct}% vs. the previous snapshot. Configurable in Settings.`}
+                  >
+                    Forecast {dropSettings.forecastWindowWeeks}w
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -161,6 +176,19 @@ export default async function AmazonDoiPage() {
                           <DiStatusBadge status={rec.diHealthStatus} />
                         ) : (
                           <span className="text-xs text-[var(--c-text-tertiary)]">N/A</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {dropBySku.has(rec.skuId) ? (
+                          <span
+                            title={`Amazon forecast for the next ${dropSettings.forecastWindowWeeks}w fell from ${dropBySku.get(rec.skuId)!.previousWindowUnits} to ${dropBySku.get(rec.skuId)!.currentWindowUnits} units`}
+                          >
+                            <Badge variant="warning">
+                              -{dropBySku.get(rec.skuId)!.dropPct.toFixed(0)}%
+                            </Badge>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-[var(--c-text-tertiary)]">—</span>
                         )}
                       </td>
                     </tr>

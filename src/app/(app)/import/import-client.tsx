@@ -11,27 +11,39 @@ const IMPORT_STEPS = [
     description: "Creates SKU master data",
     requiredTypes: [] as string[],
     completionTypes: ["wds_inventory"],
+    optional: false,
   },
   {
     number: 2,
+    label: "Kit Composition",
+    description: "Defines Parent → Child kit relationships (optional)",
+    requiredTypes: ["wds_inventory"],
+    completionTypes: ["kit_composition"],
+    optional: true,
+  },
+  {
+    number: 3,
     label: "ASIN Mapping",
     description: "Links ASINs to SKUs",
     requiredTypes: ["wds_inventory"],
     completionTypes: ["asin_mapping"],
+    optional: false,
   },
   {
-    number: 3,
+    number: 4,
     label: "Sales & Forecast Data",
     description: "WDS Monthly Sales, Amazon Sales, Amazon Forecast, Amazon Vendor Central",
     requiredTypes: ["wds_inventory", "asin_mapping"],
     completionTypes: ["wds_monthly_sales", "amazon_sales", "amazon_forecast", "amazon_vendor_central"],
+    optional: false,
   },
   {
-    number: 4,
+    number: 5,
     label: "Purchase Orders & DI Orders",
     description: "Winsome POs and Amazon Direct Import orders",
     requiredTypes: ["wds_inventory"],
     completionTypes: ["purchase_orders", "di_orders"],
+    optional: false,
   },
 ] as const;
 
@@ -96,6 +108,18 @@ const SUBTITLE: Record<StepStatus, { text: string; color: string }> = {
   locked: { text: "Complete previous steps first", color: "var(--c-text-tertiary)" },
 };
 
+function getSubtitle(
+  status: StepStatus,
+  optional: boolean,
+): { text: string; color: string } {
+  // Optional steps that aren't done yet show as "Optional"
+  // rather than pushing the user to complete them.
+  if (optional && status === "current") {
+    return { text: "Optional", color: "var(--c-text-secondary)" };
+  }
+  return SUBTITLE[status];
+}
+
 interface ImportClientProps {
   completedTypes: string[];
 }
@@ -115,14 +139,29 @@ export function ImportClient({ completedTypes }: ImportClientProps) {
         <div className="flex flex-col md:flex-row md:items-start gap-4 md:gap-0">
           {IMPORT_STEPS.map((step, i) => {
             const status = stepStatuses[i];
-            const sub = SUBTITLE[status];
+            const sub = getSubtitle(status, step.optional);
             return (
               <div key={step.number} className="flex md:flex-col items-center md:items-center flex-1 gap-3 md:gap-0">
                 <div className="flex items-center w-full md:justify-center">
-                  {i > 0 && <StepConnector status={stepStatuses[i - 1] === "completed" ? "completed" : "locked"} />}
+                  {i > 0 && (
+                    <StepConnector
+                      status={
+                        stepStatuses[i - 1] === "completed" ||
+                        IMPORT_STEPS[i - 1].optional
+                          ? "completed"
+                          : "locked"
+                      }
+                    />
+                  )}
                   <StepIndicator status={status} />
                   {i < IMPORT_STEPS.length - 1 && (
-                    <StepConnector status={status === "completed" ? "completed" : "locked"} />
+                    <StepConnector
+                      status={
+                        status === "completed" || step.optional
+                          ? "completed"
+                          : "locked"
+                      }
+                    />
                   )}
                 </div>
                 <div className="md:mt-3 md:text-center min-w-0">

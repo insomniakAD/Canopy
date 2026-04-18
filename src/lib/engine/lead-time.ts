@@ -71,7 +71,7 @@ export async function resolveLeadTime(
   }
 
   // --- Try country-level defaults ---
-  if (factory) {
+  if (factory && factory.country) {
     const countryRule = await db.leadTimeRule.findUnique({
       where: { country: factory.country },
     });

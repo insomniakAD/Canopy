@@ -1,21 +1,32 @@
 // ============================================================================
-// Import Processor: WDS Monthly Sales (Pivot Format)
+// Import Processor: WDS Monthly Sales (citmperiod_papp.csv pivot)
 // ============================================================================
-// The WDS sales export is a pivot table:
-//   - Rows = SKUs (ITEM# in first column)
-//   - Columns = Months (e.g., "Apr-25", "May-25", "2025-04")
-//   - Cell values = Units sold that month
+// The WDS monthly sales export is a pivot:
+//   - Rows = SKUs (ITEM# in one column)
+//   - Columns = 13 recent months (headers like "Apr-25", "2025-04")
+//   - Cell values = units sold that month
+//   - A per-row "TYPE" column flags each SKU as:
+//       K = Kit Parent (virtual sellable listing)
+//       c = Kit Component (child of at least one Kit Parent)
+//       A = Assembly — internal manufacturing item, DISREGARD
+//       (blank / anything else) = Standalone
 //
-// The system "unpivots" this: for each SKU × month combination,
-// it creates a sales_history record with the proper period dates.
-//
-// This gives Canopy raw monthly data to calculate its own 3/6/12-month
-// velocity, rather than relying on WDS's pre-blended average.
+// What this processor does:
+//   1. Finds the SKU, TYPE, and month columns dynamically from the headers.
+//   2. Skips any row whose TYPE is "A" (assembly — never treated as salable).
+//   3. Upserts one sales_history record per (SKU × month) for Kit Parent,
+//      Kit Component, and Standalone rows. Channel = "domestic".
+//   4. For Kit Parents: the cell value is ALREADY the number of kits sold
+//      (WDS invoices 1 unit per kit); we store it verbatim — do NOT multiply
+//      by qty_per_kit. Kit-implied child demand is derived later in the
+//      calculation engine using kit_components.
+//   5. Roles (isKitParent / isKitComponent) are NOT changed here — those are
+//      owned by the kit_composition importer (kititems.csv is source of truth).
 // ============================================================================
 
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { ImportSummary, ImportErrorDetail, SpreadsheetRow } from "./types";
-import { parseMonthColumn, toInt, toDateString } from "./utils";
+import { parseMonthColumn, toInt } from "./utils";
 
 export async function processWdsMonthlySales(
   db: PrismaClient,
@@ -27,17 +38,15 @@ export async function processWdsMonthlySales(
   let imported = 0;
   let skipped = 0;
 
-  // --- Identify which columns are months ---
-  // First column should be ITEM# (or similar SKU identifier)
-  // Remaining columns that parse as months are sales data
-  const skuColumn = headers[0]; // e.g., "ITEM#"
-  const monthColumns: { header: string; start: Date; end: Date }[] = [];
+  // ---- Identify columns ----
+  const skuHeader = headers.find((h) => /^ITEM\s*#?$|^SKU$|^ITEM\s*NO/i.test(h)) ?? headers[0];
+  const typeHeader = headers.find((h) => /^TYPE$|^FLAG$|^KIT$|^KIND$/i.test(h)) ?? null;
 
-  for (let j = 1; j < headers.length; j++) {
-    const parsed = parseMonthColumn(headers[j]);
-    if (parsed) {
-      monthColumns.push({ header: headers[j], ...parsed });
-    }
+  const monthColumns: { header: string; start: Date; end: Date }[] = [];
+  for (const h of headers) {
+    if (h === skuHeader || h === typeHeader) continue;
+    const parsed = parseMonthColumn(h);
+    if (parsed) monthColumns.push({ header: h, ...parsed });
   }
 
   if (monthColumns.length === 0) {
@@ -45,7 +54,7 @@ export async function processWdsMonthlySales(
       rowNumber: 1,
       fieldName: "headers",
       errorType: "format_error",
-      message: `No month columns found. Expected formats like "Apr-25", "2025-04", "Apr 2025". Found headers: ${headers.slice(1, 6).join(", ")}`,
+      message: `No month columns found. Expected formats like "Apr-25", "2025-04". Headers: ${headers.slice(0, 10).join(", ")}`,
     });
     return {
       batchId,
@@ -59,77 +68,97 @@ export async function processWdsMonthlySales(
     };
   }
 
-  // --- Process each row (SKU) × each month column ---
+  // ---- Per-row processing ----
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const rowNum = i + 2;
 
-    const itemCode = row[skuColumn] != null ? String(row[skuColumn]).trim() : "";
+    const itemCode = row[skuHeader] != null ? String(row[skuHeader]).trim() : "";
     if (!itemCode) {
       errors.push({
         rowNumber: rowNum,
-        fieldName: skuColumn,
+        fieldName: skuHeader,
         errorType: "invalid_value",
         message: "SKU code is blank",
       });
       continue;
     }
 
-    // Look up SKU
+    // ---- Type flag handling ----
+    // If no TYPE column is present, try a last-resort scan: the first
+    // single-character K/c/A cell in the row acts as an inline flag.
+    let typeFlag = "";
+    if (typeHeader) {
+      typeFlag = row[typeHeader] != null ? String(row[typeHeader]).trim() : "";
+    } else {
+      for (const h of headers) {
+        if (h === skuHeader) continue;
+        if (monthColumns.some((m) => m.header === h)) continue;
+        const v = row[h];
+        if (v == null) continue;
+        const s = String(v).trim();
+        if (s.length === 1 && /^[KcA]$/.test(s)) {
+          typeFlag = s;
+          break;
+        }
+      }
+    }
+
+    // Assembly items: disregard entirely.
+    if (typeFlag === "A") {
+      skipped++;
+      continue;
+    }
+
+    // ---- Look up SKU (do NOT auto-create with assembly-only data) ----
     const sku = await db.sku.findUnique({ where: { skuCode: itemCode } });
     if (!sku) {
       errors.push({
         rowNumber: rowNum,
-        fieldName: skuColumn,
+        fieldName: skuHeader,
         errorType: "missing_sku",
-        message: `SKU "${itemCode}" not found. Import a WDS Inventory file first to create SKUs.`,
+        message: `SKU "${itemCode}" not found. Import WDS Inventory (STKSTATUS.txt) and Kit Composition (kititems.csv) first so SKUs exist.`,
         rawValue: itemCode,
       });
       continue;
     }
 
-    // Process each month column
+    // ---- Record each month's sales ----
+    let wroteAny = false;
     for (const mc of monthColumns) {
-      const rawVal = row[mc.header];
-      if (rawVal === null || rawVal === undefined || rawVal === "" || rawVal === "0" || rawVal === 0) {
-        continue; // Skip zero or empty months
-      }
+      const raw = row[mc.header];
+      if (raw === null || raw === undefined || raw === "" || raw === 0 || raw === "0") continue;
 
-      const units = toInt(rawVal);
+      const units = toInt(raw);
       if (units === null || units < 0) {
         errors.push({
           rowNumber: rowNum,
           fieldName: mc.header,
           errorType: "invalid_value",
-          message: `Value "${rawVal}" is not a valid unit count`,
-          rawValue: String(rawVal),
+          message: `Value "${raw}" in ${mc.header} is not a valid unit count`,
+          rawValue: String(raw),
         });
         continue;
       }
 
-      // Upsert: if we already have data for this SKU + channel + period, update it
-      const periodStart = mc.start;
-      const periodEnd = mc.end;
-
+      // For Kit Parents (K): units = kits sold (not cartons × qty). Store as-is.
+      // For Components (c) and Standalone: units = direct sales. Store as-is.
       await db.salesRecord.upsert({
         where: {
           unique_sales_period: {
             skuId: sku.id,
             channel: "domestic",
-            periodStartDate: periodStart,
-            periodEndDate: periodEnd,
+            periodStartDate: mc.start,
+            periodEndDate: mc.end,
           },
         },
-        update: {
-          quantity: units,
-          importBatchId: batchId,
-        },
+        update: { quantity: units, importBatchId: batchId },
         create: {
           skuId: sku.id,
           channel: "domestic",
-          saleDate: periodStart,
-          periodStartDate: periodStart,
-          periodEndDate: periodEnd,
+          saleDate: mc.start,
+          periodStartDate: mc.start,
+          periodEndDate: mc.end,
           quantity: units,
           source: "wds_export",
           importBatchId: batchId,
@@ -137,6 +166,12 @@ export async function processWdsMonthlySales(
       });
 
       imported++;
+      wroteAny = true;
+    }
+
+    if (!wroteAny) {
+      // All month cells were blank/zero — not an error, just nothing to record.
+      skipped++;
     }
   }
 
