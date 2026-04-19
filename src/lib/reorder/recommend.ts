@@ -8,7 +8,7 @@
 //   → Amazon comparison
 //   → Factory recommendation
 //   → Order timing
-//   → Container CBM impact
+//   → Container FCL guidance
 //   → Explanation generator
 //   → Save to database
 //
@@ -22,8 +22,7 @@ import type { SkuRecommendation, TierConfig, ContainerPlan } from "./types";
 import { calculateReorderQuantity, calculateAmazonBasedQuantity } from "./quantity";
 import { recommendFactory, calculateOrderTiming } from "./factory-and-timing";
 import { generateExplanation } from "./explain";
-import { calculateSkuCbmImpact } from "./container";
-import { buildContainerPlans } from "./container";
+import { calculateFclHint, buildContainerPlans } from "./container";
 
 export interface RecommendationRunResult {
   runDate: Date;
@@ -36,7 +35,7 @@ export interface RecommendationRunResult {
     watchCount: number;
     doNotOrderCount: number;
     totalOrderUnits: number;
-    totalOrderCbm: number;
+    totalFractionHQ: number;
   };
 }
 
@@ -100,13 +99,13 @@ export async function runRecommendations(
   let watchCount = 0;
   let doNotOrderCount = 0;
   let totalOrderUnits = 0;
-  let totalOrderCbm = 0;
+  let totalFractionHQ = 0;
 
   for (const rec of recommendations) {
     if (rec.decision === "order") {
       orderCount++;
       totalOrderUnits += rec.adjustedQuantity;
-      totalOrderCbm += rec.containerCbmImpact ?? 0;
+      totalFractionHQ += rec.fclFractionHQ ?? 0;
     } else if (rec.decision === "watch") {
       watchCount++;
     } else {
@@ -125,7 +124,7 @@ export async function runRecommendations(
       watchCount,
       doNotOrderCount,
       totalOrderUnits,
-      totalOrderCbm: Math.round(totalOrderCbm * 100) / 100,
+      totalFractionHQ: Math.round(totalFractionHQ * 100) / 100,
     },
   };
 }
@@ -143,8 +142,7 @@ async function generateRecommendation(
   const sku = await db.sku.findUnique({ where: { id: calc.demand.skuId } });
   const tier = sku?.tier ?? "C";
   const moq = sku?.moq ?? null;
-  const cbmPerCarton = Number(sku?.cbmPerCarton ?? 0);
-  const unitsPerCarton = sku?.unitsPerCarton ?? 1;
+  const fclQty40HQ = sku?.fclQty40HQ ?? null;
 
   // Tier config
   const tierConfig = tierConfigs.get(tier) ?? {
@@ -190,11 +188,11 @@ async function generateRecommendation(
     asOfDate
   );
 
-  // --- CBM impact ---
-  const containerCbmImpact =
+  // --- FCL guidance (fraction of a 40HQ container) ---
+  const fclCalc =
     reorderCalc.adjustedQuantity > 0
-      ? calculateSkuCbmImpact(reorderCalc.adjustedQuantity, cbmPerCarton, unitsPerCarton)
-      : null;
+      ? calculateFclHint(reorderCalc.adjustedQuantity, fclQty40HQ)
+      : { fraction40HQ: null, hint: "unknown" as const };
 
   // Build partial recommendation (without explanation)
   const doi = calc.amazonDoi;
@@ -229,7 +227,8 @@ async function generateRecommendation(
     recommendedFactoryName: factory.factoryName,
     recommendedOrderByDate: timing.orderByDate,
     projectedStockoutDate: calc.inventory.projectedStockoutDate,
-    containerCbmImpact,
+    fclFractionHQ: fclCalc.fraction40HQ != null ? Math.round(fclCalc.fraction40HQ * 100) / 100 : null,
+    fclHint: fclCalc.hint,
   };
 
   // --- Explanation ---
@@ -281,7 +280,7 @@ async function saveRecommendation(
       recommendedFactoryId: rec.recommendedFactoryId,
       recommendedOrderByDate: rec.recommendedOrderByDate,
       projectedStockoutDate: rec.projectedStockoutDate,
-      containerCbmImpact: rec.containerCbmImpact,
+      fclFractionHQ: rec.fclFractionHQ,
       explanation: rec.explanation,
       isCurrent: true,
     },

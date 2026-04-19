@@ -3,6 +3,7 @@
 // ============================================================================
 
 import type { SkuCalculationResult } from "@/lib/engine/types";
+import type { FclHint } from "./container";
 
 /** Full recommendation for a single SKU */
 export interface SkuRecommendation {
@@ -43,7 +44,10 @@ export interface SkuRecommendation {
   recommendedFactoryName: string | null;
   recommendedOrderByDate: Date | null;
   projectedStockoutDate: Date | null;
-  containerCbmImpact: number | null;
+
+  // --- FCL guidance (replaces old CBM/carton math) ---
+  fclFractionHQ: number | null;   // adjusted qty / fclQty40HQ (null if unknown)
+  fclHint: FclHint;
 
   // --- Explainability ---
   explanation: string;
@@ -58,13 +62,10 @@ export interface ContainerPlan {
   factoryName: string;
   country: string;
   skus: ContainerSkuLine[];
-  totalCbm: number;
   totalUnits: number;
   totalCost: number;
-  containerType: "forty_gp" | "forty_hq";
-  containerCount: number;
-  fillPercentage: number;     // 0-100
-  estimatedShippingCost: number;
+  totalFractionHQ: number;          // Sum of 40HQ fractions (rough load indicator)
+  estimatedContainers: number | null; // Ceil of totalFractionHQ, null if no FCL data
 }
 
 export interface ContainerSkuLine {
@@ -72,10 +73,10 @@ export interface ContainerSkuLine {
   skuCode: string;
   skuName: string;
   quantity: number;
-  cbmPerCarton: number;
-  unitsPerCarton: number;
-  cartons: number;
-  lineCbm: number;
+  fclQty40GP: number | null;
+  fclQty40HQ: number | null;
+  fraction40HQ: number | null;    // quantity / fclQty40HQ, rounded to 2 decimals
+  hint: FclHint;
   unitCost: number;
   lineCost: number;
 }

@@ -1,7 +1,8 @@
 import { db } from "@/lib/db";
-import { Card, StatCard, Badge, TierBadge } from "@/components/ui";
+import { Card, StatCard, TierBadge } from "@/components/ui";
 import Link from "next/link";
 import { ContainerExport } from "./container-export";
+import { calculateFclHint } from "@/lib/reorder/container";
 
 // Helpers -----------------------------------------------------------------
 
@@ -17,37 +18,50 @@ function fmtUsd(v: number) {
   return `$${v.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
-function containerLabel(t: string) {
-  return t === "forty_hq" ? "40HQ" : "40GP";
+function hintLabel(hint: string): string {
+  switch (hint) {
+    case "lcl":
+      return "Well below 1 FCL";
+    case "round_up_to_fcl":
+      return "Near 1 FCL — consider rounding up";
+    case "fcl":
+      return "Partial load above 1 FCL";
+    case "multi_fcl":
+      return "Near integer number of FCLs";
+    default:
+      return "Unknown (no FCL qty on file)";
+  }
 }
 
 // Data loader -------------------------------------------------------------
 
-interface ContainerPlanView {
+interface ContainerSkuLine {
+  skuId: string;
+  skuCode: string;
+  skuName: string;
+  tier: string;
+  quantity: number;
+  fclQty40GP: number | null;
+  fclQty40HQ: number | null;
+  fraction40HQ: number | null;
+  hint: string;
+  cost: number;
+}
+
+interface FactoryPlanView {
   factoryId: string;
   factoryName: string;
   country: string;
-  skus: {
-    skuId: string;
-    skuCode: string;
-    skuName: string;
-    tier: string;
-    quantity: number;
-    cartons: number;
-    cbm: number;
-    cost: number;
-  }[];
-  totalCbm: number;
+  skus: ContainerSkuLine[];
   totalUnits: number;
   totalCost: number;
-  containerType: string;
-  containerCount: number;
-  fillPct: number;
+  totalFractionHQ: number;
+  estimatedContainers: number | null;
+  skusMissingFcl: number;
 }
 
 async function loadContainerData() {
   try {
-    // Get all "order" recs — we'll group them by factory to build container views
     const recs = await db.reorderRecommendation.findMany({
       where: { isCurrent: true, decision: "order" },
       include: {
@@ -56,8 +70,8 @@ async function loadContainerData() {
             skuCode: true,
             name: true,
             tier: true,
-            cbmPerCarton: true,
-            unitsPerCarton: true,
+            fclQty40GP: true,
+            fclQty40HQ: true,
             unitCostUsd: true,
           },
         },
@@ -66,17 +80,7 @@ async function loadContainerData() {
       orderBy: { adjustedQuantity: "desc" },
     });
 
-    // Container rules
-    const rules = await db.containerRule.findMany();
-    const ruleMap: Record<string, number> = {};
-    for (const r of rules) {
-      ruleMap[r.containerType] = Number(r.maxCbm);
-    }
-    const gpMax = ruleMap["forty_gp"] ?? 56;
-    const hqMax = ruleMap["forty_hq"] ?? 68;
-
-    // Group by factory
-    const factoryMap = new Map<string, ContainerPlanView>();
+    const factoryMap = new Map<string, FactoryPlanView>();
 
     for (const r of recs) {
       const fId = r.recommendedFactory?.id ?? "unassigned";
@@ -89,23 +93,21 @@ async function loadContainerData() {
           factoryName: fName,
           country: fCountry,
           skus: [],
-          totalCbm: 0,
           totalUnits: 0,
           totalCost: 0,
-          containerType: "forty_gp",
-          containerCount: 1,
-          fillPct: 0,
+          totalFractionHQ: 0,
+          estimatedContainers: null,
+          skusMissingFcl: 0,
         });
       }
 
       const plan = factoryMap.get(fId)!;
       const qty = r.adjustedQuantity;
-      const upc = r.sku.unitsPerCarton ?? 1;
-      const cbmPc = r.sku.cbmPerCarton ? Number(r.sku.cbmPerCarton) : 0;
+      const fclGp = r.sku.fclQty40GP ?? null;
+      const fclHq = r.sku.fclQty40HQ ?? null;
       const unitCost = r.sku.unitCostUsd ? Number(r.sku.unitCostUsd) : 0;
-      const cartons = Math.ceil(qty / upc);
-      const cbm = cartons * cbmPc;
       const cost = qty * unitCost;
+      const { fraction40HQ, hint } = calculateFclHint(qty, fclHq);
 
       plan.skus.push({
         skuId: r.skuId,
@@ -113,40 +115,45 @@ async function loadContainerData() {
         skuName: r.sku.name,
         tier: r.sku.tier,
         quantity: qty,
-        cartons,
-        cbm,
+        fclQty40GP: fclGp,
+        fclQty40HQ: fclHq,
+        fraction40HQ: fraction40HQ != null ? Math.round(fraction40HQ * 100) / 100 : null,
+        hint,
         cost,
       });
 
-      plan.totalCbm += cbm;
       plan.totalUnits += qty;
       plan.totalCost += cost;
-    }
-
-    // Determine container type and count per factory
-    for (const plan of factoryMap.values()) {
-      if (plan.totalCbm <= gpMax) {
-        plan.containerType = "forty_gp";
-        plan.containerCount = 1;
-        plan.fillPct = (plan.totalCbm / gpMax) * 100;
-      } else if (plan.totalCbm <= hqMax) {
-        plan.containerType = "forty_hq";
-        plan.containerCount = 1;
-        plan.fillPct = (plan.totalCbm / hqMax) * 100;
+      if (fraction40HQ != null) {
+        plan.totalFractionHQ += fraction40HQ;
       } else {
-        plan.containerType = "forty_hq";
-        plan.containerCount = Math.ceil(plan.totalCbm / hqMax);
-        plan.fillPct = (plan.totalCbm / (plan.containerCount * hqMax)) * 100;
+        plan.skusMissingFcl++;
       }
     }
 
-    const plans = Array.from(factoryMap.values()).sort((a, b) => b.totalCbm - a.totalCbm);
-    const totalCbm = plans.reduce((s, p) => s + p.totalCbm, 0);
-    const totalUnits = plans.reduce((s, p) => s + p.totalUnits, 0);
-    const totalContainers = plans.reduce((s, p) => s + p.containerCount, 0);
-    const totalCost = plans.reduce((s, p) => s + p.totalCost, 0);
+    for (const plan of factoryMap.values()) {
+      plan.totalFractionHQ = Math.round(plan.totalFractionHQ * 100) / 100;
+      plan.estimatedContainers =
+        plan.totalFractionHQ > 0 ? Math.max(1, Math.ceil(plan.totalFractionHQ)) : null;
+    }
 
-    return { ok: true as const, plans, totalCbm, totalUnits, totalContainers, totalCost };
+    const plans = Array.from(factoryMap.values()).sort(
+      (a, b) => b.totalFractionHQ - a.totalFractionHQ
+    );
+    const totalUnits = plans.reduce((s, p) => s + p.totalUnits, 0);
+    const totalCost = plans.reduce((s, p) => s + p.totalCost, 0);
+    const totalFractionHQ =
+      Math.round(plans.reduce((s, p) => s + p.totalFractionHQ, 0) * 100) / 100;
+    const totalContainers = plans.reduce((s, p) => s + (p.estimatedContainers ?? 0), 0);
+
+    return {
+      ok: true as const,
+      plans,
+      totalFractionHQ,
+      totalUnits,
+      totalContainers,
+      totalCost,
+    };
   } catch {
     return { ok: false as const };
   }
@@ -168,7 +175,7 @@ export default async function ContainerPlanningPage() {
     );
   }
 
-  const { plans, totalCbm, totalUnits, totalContainers, totalCost } = data;
+  const { plans, totalFractionHQ, totalUnits, totalContainers, totalCost } = data;
 
   return (
     <div>
@@ -177,14 +184,15 @@ export default async function ContainerPlanningPage() {
         <ContainerExport plans={plans} />
       </div>
       <p className="text-sm text-[var(--c-text-secondary)] mb-6">
-        How SKU orders group into containers by factory. Based on current &ldquo;Order&rdquo; recommendations.
+        Rough container load by factory. Each SKU&apos;s order is compared to its 40HQ FCL quantity — summed per factory to estimate container count. Factories confirm 40GP vs 40HQ at load.
       </p>
 
       {/* Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         <StatCard label="Factories" value={plans.length} />
-        <StatCard label="Containers" value={totalContainers} accent="blue" />
-        <StatCard label="Total CBM" value={fmtNum(totalCbm)} />
+        <StatCard label="Est. Containers" value={totalContainers} accent="blue" sub="rounded up per factory" />
+        <StatCard label="40HQ Fraction" value={fmtNum(totalFractionHQ, 2)} sub="sum across SKUs" />
+        <StatCard label="Total Units" value={fmtInt(totalUnits)} />
         <StatCard label="Total Cost" value={fmtUsd(totalCost)} />
       </div>
 
@@ -198,7 +206,6 @@ export default async function ContainerPlanningPage() {
         <div className="space-y-6">
           {plans.map((plan) => (
             <Card key={plan.factoryId}>
-              {/* Factory header */}
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-lg font-semibold text-[var(--c-text-primary)]">{plan.factoryName}</h3>
@@ -206,31 +213,22 @@ export default async function ContainerPlanningPage() {
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold">
-                    {plan.containerCount}× {containerLabel(plan.containerType)}
+                    {plan.estimatedContainers != null
+                      ? `~${plan.estimatedContainers}× 40HQ (est.)`
+                      : "No FCL data"}
                   </p>
                   <p className="text-xs text-[var(--c-text-secondary)]">
-                    {fmtNum(plan.totalCbm)} / {fmtNum(plan.containerCount * (plan.containerType === "forty_hq" ? 68 : 56))} CBM
+                    Load fraction: {fmtNum(plan.totalFractionHQ, 2)}× 40HQ
+                    {plan.skusMissingFcl > 0 && ` · ${plan.skusMissingFcl} SKU${plan.skusMissingFcl === 1 ? "" : "s"} without FCL qty`}
                   </p>
                 </div>
               </div>
 
-              {/* Fill bar */}
-              <div className="mb-4">
-                <div className="flex justify-between text-xs text-[var(--c-text-secondary)] mb-1">
-                  <span>{fmtNum(plan.fillPct, 0)}% filled</span>
-                  <span>{fmtInt(plan.totalUnits)} units &middot; {fmtUsd(plan.totalCost)}</span>
-                </div>
-                <div className="h-3 bg-[var(--c-border-row)] rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      plan.fillPct >= 85 ? "bg-[var(--c-success)]" : plan.fillPct >= 60 ? "bg-[var(--c-accent)]" : "bg-[var(--c-warning)]"
-                    }`}
-                    style={{ width: `${Math.min(plan.fillPct, 100)}%` }}
-                  />
-                </div>
+              <div className="mb-4 flex justify-between text-xs text-[var(--c-text-secondary)]">
+                <span>{fmtInt(plan.totalUnits)} units</span>
+                <span>{fmtUsd(plan.totalCost)}</span>
               </div>
 
-              {/* SKU list */}
               <div className="overflow-x-auto -mx-6">
                 <table className="w-full text-sm">
                   <thead>
@@ -238,8 +236,10 @@ export default async function ContainerPlanningPage() {
                       <th className="px-6 py-2 font-medium">SKU</th>
                       <th className="px-4 py-2 font-medium">Tier</th>
                       <th className="px-4 py-2 font-medium text-right">Qty</th>
-                      <th className="px-4 py-2 font-medium text-right">Cartons</th>
-                      <th className="px-4 py-2 font-medium text-right">CBM</th>
+                      <th className="px-4 py-2 font-medium text-right">FCL 40GP</th>
+                      <th className="px-4 py-2 font-medium text-right">FCL 40HQ</th>
+                      <th className="px-4 py-2 font-medium text-right">40HQ Frac</th>
+                      <th className="px-4 py-2 font-medium">Hint</th>
                       <th className="px-4 py-2 font-medium text-right">Cost</th>
                     </tr>
                   </thead>
@@ -254,8 +254,16 @@ export default async function ContainerPlanningPage() {
                         </td>
                         <td className="px-4 py-2"><TierBadge tier={s.tier} /></td>
                         <td className="px-4 py-2 text-right font-mono">{fmtInt(s.quantity)}</td>
-                        <td className="px-4 py-2 text-right font-mono">{fmtInt(s.cartons)}</td>
-                        <td className="px-4 py-2 text-right font-mono">{fmtNum(s.cbm, 2)}</td>
+                        <td className="px-4 py-2 text-right font-mono text-[var(--c-text-secondary)]">
+                          {s.fclQty40GP != null ? fmtInt(s.fclQty40GP) : "—"}
+                        </td>
+                        <td className="px-4 py-2 text-right font-mono text-[var(--c-text-secondary)]">
+                          {s.fclQty40HQ != null ? fmtInt(s.fclQty40HQ) : "—"}
+                        </td>
+                        <td className="px-4 py-2 text-right font-mono">
+                          {s.fraction40HQ != null ? fmtNum(s.fraction40HQ, 2) : "—"}
+                        </td>
+                        <td className="px-4 py-2 text-xs text-[var(--c-text-secondary)]">{hintLabel(s.hint)}</td>
                         <td className="px-4 py-2 text-right font-mono">{fmtUsd(s.cost)}</td>
                       </tr>
                     ))}

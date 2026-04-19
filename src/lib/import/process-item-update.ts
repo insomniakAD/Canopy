@@ -4,15 +4,15 @@
 // Three sheets, processed in order:
 //   1. Vendors  — VENDOR#, VENDOR NAME, COUNTRY OF ORIGIN
 //                 Upsert Factory by vendorCode. Name/country update if provided.
-//   2. Items    — ITEM#, ITEM NAME, SALES DESCRIPTION, STATUS, ASIN, DI ENROLLED,
-//                 KIT PARENT, VENDOR#, CBM/CARTON, UNITS/CARTON, MOQ,
-//                 UNIT COST (USD), TIER OVERRIDE
+//   2. Items    — ITEM#, ITEM NAME, STATUS, ASIN, DI ENROLLED, KIT PARENT,
+//                 VENDOR#, FCL QTY 40GP, FCL QTY 40HQ, MOQ, UNIT COST (USD),
+//                 TIER OVERRIDE
 //                 Blank cell = no-op (leave existing value).
 //                 If VENDOR# differs from current default factory's vendorCode,
 //                 write a pending_vendor_transitions row instead of mutating
 //                 Sku.defaultFactoryId. In that row, also capture the new
-//                 unit cost / MOQ / CBM / units-per-carton if those cells
-//                 were provided — they belong to the new vendor and must not
+//                 unit cost / MOQ / FCL quantities if those cells were
+//                 provided — they belong to the new vendor and must not
 //                 overwrite current production values.
 //   3. Kits     — PARENT ITEM#, CHILD ITEM#, QTY PER KIT
 //                 Replaces KitComponent rows for each parent encountered.
@@ -93,6 +93,13 @@ export async function processItemUpdate(
           skipped++;
           continue;
         }
+        // Skip the gray italic instruction row (row 2) — vendor codes are
+        // short alphanumerics, so any whitespace or punctuation flags a
+        // format hint like "Enter WDS vendor code (e.g. HRN)".
+        if (!/^[\w\-]+$/.test(vendorCode)) {
+          skipped++;
+          continue;
+        }
         const name = cell(row, vNameH);
         const countryRaw = cell(row, vCountryH).toLowerCase();
         let country: Country | null = null;
@@ -150,14 +157,13 @@ export async function processItemUpdate(
 
     const itemH = findHeader(headers, /^ITEM\s*#?$/i);
     const nameH = findHeader(headers, /^ITEM\s*NAME$/i);
-    const descH = findHeader(headers, /^SALES\s*DESCRIPTION$/i);
     const statusH = findHeader(headers, /^STATUS$/i);
     const asinH = findHeader(headers, /^ASIN$/i);
     const diH = findHeader(headers, /^DI\s*ENROLLED$/i);
     const kitH = findHeader(headers, /^KIT\s*PARENT$/i);
     const vendorH = findHeader(headers, /^VENDOR\s*#?$/i);
-    const cbmH = findHeader(headers, /CBM.*CARTON/i);
-    const unitsCartH = findHeader(headers, /UNITS.*CARTON/i);
+    const fclGpH = findHeader(headers, /FCL.*40\s*GP/i);
+    const fclHqH = findHeader(headers, /FCL.*40\s*HQ/i);
     const moqH = findHeader(headers, /^MOQ$/i);
     const unitCostH = findHeader(headers, /UNIT\s*COST/i);
     const tierH = findHeader(headers, /TIER/i);
@@ -206,8 +212,6 @@ export async function processItemUpdate(
 
         const newName = cell(row, nameH);
         if (newName) update.name = newName;
-        const newDesc = cell(row, descH);
-        if (newDesc) update.description = newDesc;
 
         const statusRaw = cell(row, statusH).toLowerCase();
         if (statusRaw) {
@@ -296,8 +300,8 @@ export async function processItemUpdate(
         const newVendorCode = cell(row, vendorH);
         const newUnitCost = toNumber(cell(row, unitCostH));
         const newMoq = toInt(cell(row, moqH));
-        const newCbm = toNumber(cell(row, cbmH));
-        const newUnitsCart = toInt(cell(row, unitsCartH));
+        const newFclGp = toInt(cell(row, fclGpH));
+        const newFclHq = toInt(cell(row, fclHqH));
 
         let isTransition = false;
         if (newVendorCode) {
@@ -316,7 +320,7 @@ export async function processItemUpdate(
               // No prior vendor — set it directly. This is first assignment, not a transition.
               update.defaultFactoryId = newFactory.id;
             } else if (currentVendorCode === newVendorCode) {
-              // Same vendor — apply cost/MOQ/carton fields directly.
+              // Same vendor — apply cost/MOQ/FCL fields directly.
             } else {
               // Vendor change → record as pending transition, do NOT mutate Sku.
               isTransition = true;
@@ -330,8 +334,8 @@ export async function processItemUpdate(
                 toFactoryId: newFactory.id,
                 newUnitCost: newUnitCost ?? undefined,
                 newMoq: newMoq ?? undefined,
-                newCbmCarton: newCbm ?? undefined,
-                newUnitsCarton: newUnitsCart ?? undefined,
+                newFclQty40GP: newFclGp ?? undefined,
+                newFclQty40HQ: newFclHq ?? undefined,
                 status: "pending" as const,
               };
               if (existingPending) {
@@ -349,8 +353,8 @@ export async function processItemUpdate(
         if (!isTransition) {
           if (newUnitCost !== null) update.unitCostUsd = newUnitCost;
           if (newMoq !== null) update.moq = newMoq;
-          if (newCbm !== null) update.cbmPerCarton = newCbm;
-          if (newUnitsCart !== null) update.unitsPerCarton = newUnitsCart;
+          if (newFclGp !== null) update.fclQty40GP = newFclGp;
+          if (newFclHq !== null) update.fclQty40HQ = newFclHq;
         }
 
         if (Object.keys(update).length > 0) {
@@ -398,6 +402,12 @@ export async function processItemUpdate(
         const qty = toInt(cell(row, qtyH));
         if (!parentCode || !childCode) {
           if (parentCode || childCode) skipped++;
+          continue;
+        }
+        // Skip the gray italic instruction row — SKU codes are short
+        // alphanumerics, so any whitespace or punctuation flags a format hint.
+        if (!/^[\w\-]+$/.test(parentCode) || !/^[\w\-]+$/.test(childCode)) {
+          skipped++;
           continue;
         }
         if (qty === null || qty <= 0) {

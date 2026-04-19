@@ -84,13 +84,13 @@ async function loadReportData() {
     }
 
     // By country breakdown
-    const byCountry = new Map<string, { skus: number; units: number; cbm: number; cost: number }>();
+    const byCountry = new Map<string, { skus: number; units: number; fractionHQ: number; cost: number }>();
     for (const r of orderRecs) {
       const country = r.recommendedFactory?.country ?? "unassigned";
-      const entry = byCountry.get(country) ?? { skus: 0, units: 0, cbm: 0, cost: 0 };
+      const entry = byCountry.get(country) ?? { skus: 0, units: 0, fractionHQ: 0, cost: 0 };
       entry.skus++;
       entry.units += r.adjustedQuantity;
-      entry.cbm += r.containerCbmImpact ? Number(r.containerCbmImpact) : 0;
+      entry.fractionHQ += r.fclFractionHQ ? Number(r.fclFractionHQ) : 0;
       entry.cost += r.adjustedQuantity * (r.sku.unitCostUsd ? Number(r.sku.unitCostUsd) : 0);
       byCountry.set(country, entry);
     }
@@ -217,7 +217,7 @@ export default async function ReportsPage() {
                   <th className="py-2 font-medium">Country</th>
                   <th className="py-2 font-medium text-right">SKUs</th>
                   <th className="py-2 font-medium text-right">Units</th>
-                  <th className="py-2 font-medium text-right">CBM</th>
+                  <th className="py-2 font-medium text-right">~40HQ</th>
                   <th className="py-2 font-medium text-right">Cost</th>
                 </tr>
               </thead>
@@ -227,7 +227,7 @@ export default async function ReportsPage() {
                     <td className="py-2 capitalize font-medium">{c.country}</td>
                     <td className="py-2 text-right font-mono">{c.skus}</td>
                     <td className="py-2 text-right font-mono">{fmtInt(c.units)}</td>
-                    <td className="py-2 text-right font-mono">{fmtNum(c.cbm)}</td>
+                    <td className="py-2 text-right font-mono">{fmtNum(c.fractionHQ)}</td>
                     <td className="py-2 text-right font-mono">{fmtUsd(c.cost)}</td>
                   </tr>
                 ))}

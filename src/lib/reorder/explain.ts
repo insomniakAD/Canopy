@@ -76,8 +76,14 @@ export function generateExplanation(
       lines.push(`  Adjusted to ${rec.adjustedQuantity.toLocaleString()} units (MOQ applied)`);
     }
 
-    if (rec.containerCbmImpact !== null && rec.containerCbmImpact > 0) {
-      lines.push(`  Container space: ${rec.containerCbmImpact} CBM`);
+    if (rec.fclFractionHQ !== null && rec.fclFractionHQ > 0) {
+      const pct = Math.round(rec.fclFractionHQ * 100);
+      let label = `~${pct}% of a 40HQ FCL`;
+      if (rec.fclHint === "round_up_to_fcl") label += " — consider rounding up to a full container";
+      else if (rec.fclHint === "multi_fcl") label += " — near an integer number of containers";
+      else if (rec.fclHint === "fcl") label += " — partial load above 1 container";
+      else if (rec.fclHint === "lcl") label += " — well below a full container";
+      lines.push(`  Container hint: ${label}`);
     }
 
     lines.push("");

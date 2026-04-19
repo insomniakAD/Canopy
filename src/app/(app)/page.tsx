@@ -44,10 +44,10 @@ async function loadDashboard() {
     // Stockout risks: order recs sorted by weeks of supply, top 10
     const stockoutRisks = orderRecs.slice(0, 10);
 
-    // Total units and CBM to order
+    // Total units and approximate 40HQ container load
     const totalUnits = orderRecs.reduce((s, r) => s + r.adjustedQuantity, 0);
-    const totalCbm = orderRecs.reduce(
-      (s, r) => s + (r.containerCbmImpact ? Number(r.containerCbmImpact) : 0),
+    const totalFractionHQ = orderRecs.reduce(
+      (s, r) => s + (r.fclFractionHQ ? Number(r.fclFractionHQ) : 0),
       0
     );
 
@@ -91,7 +91,7 @@ async function loadDashboard() {
       watchCount: watchRecs.length,
       dnoCount: dnoRecs.length,
       totalUnits,
-      totalCbm,
+      totalFractionHQ,
       stockoutRisks,
       recentImports,
       lastRunDate: recs[0]?.calculationDate ?? null,
@@ -140,7 +140,7 @@ export default async function DashboardPage() {
     watchCount,
     dnoCount,
     totalUnits,
-    totalCbm,
+    totalFractionHQ,
     stockoutRisks,
     recentImports,
     lastRunDate,
@@ -183,7 +183,7 @@ export default async function DashboardPage() {
           label="SKUs to Order"
           value={orderCount}
           accent="blue"
-          sub={hasRecs ? `${totalUnits.toLocaleString()} units / ${totalCbm.toFixed(1)} CBM` : undefined}
+          sub={hasRecs ? `${totalUnits.toLocaleString()} units / ~${totalFractionHQ.toFixed(1)} × 40HQ` : undefined}
         />
         <StatCard label="Watch List" value={watchCount} accent="amber" />
         <StatCard label="Do Not Order" value={dnoCount} accent="default" />

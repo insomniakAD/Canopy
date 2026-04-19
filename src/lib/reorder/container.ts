@@ -1,66 +1,68 @@
 // ============================================================================
-// Container Planning Engine
+// Container Planning Engine — FCL-based guidance
 // ============================================================================
-// Groups SKU orders by factory and estimates container requirements.
+// Winsome can't precisely pack containers in the tool — factories confirm
+// 40GP vs 40HQ after the PO ships, and each SKU ships 1 unit/carton. Instead
+// of CBM math, we rely on per-SKU FCL quantities captured from factory quotes
+// (Sku.fclQty40GP / Sku.fclQty40HQ) and compute simple guidance:
 //
-// How it works:
-//   1. Takes all SKUs with decision = "order"
-//   2. Groups them by recommended factory
-//   3. For each factory group, calculates total CBM
-//   4. Determines container type (40GP vs 40HQ) and count
-//   5. Reports fill percentage so buyers can see if there's room
+//   1. Per SKU — what fraction of a 40HQ FCL does this order represent?
+//      If near 1.0 (or an integer multiple), the buyer should treat the
+//      order as a Full Container Load and round to the FCL qty.
 //
-// Container types:
-//   40GP = 56 CBM capacity, ~26,000 kg
-//   40HQ = 68 CBM capacity, ~26,000 kg
-//
-// Rules:
-//   - All SKUs in one container must come from the same factory
-//   - If CBM fits in a 40GP, use 40GP (cheaper)
-//   - If CBM exceeds 40GP but fits 40HQ, use 40HQ
-//   - If CBM exceeds 40HQ, calculate number of containers needed
+//   2. Per factory group — what's the rough total container footprint?
+//      We sum the 40HQ fractions across all SKUs for a factory. It's a
+//      guide, not a precise pack plan, because factories actually mix
+//      SKUs and may swap container type at load time.
 // ============================================================================
 
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { SkuRecommendation, ContainerPlan, ContainerSkuLine } from "./types";
 
-interface ContainerRuleData {
-  containerType: string;
-  maxCbm: number;
-  maxWeightKg: number;
-  costEstimateUsd: number;
+const FCL_ROUND_LOWER = 0.85; // Below this → order is not near a full container
+const FCL_ROUND_UPPER = 1.15; // Above this → more than one container
+
+export type FclHint = "lcl" | "round_up_to_fcl" | "fcl" | "multi_fcl" | "unknown";
+
+/**
+ * Per-SKU FCL guidance for a given order quantity.
+ * Uses 40HQ as the reference size (larger, more common).
+ */
+export function calculateFclHint(
+  quantity: number,
+  fclQty40HQ: number | null
+): { fraction40HQ: number | null; hint: FclHint } {
+  if (!fclQty40HQ || fclQty40HQ <= 0 || quantity <= 0) {
+    return { fraction40HQ: null, hint: "unknown" };
+  }
+  const fraction = quantity / fclQty40HQ;
+  if (fraction >= FCL_ROUND_LOWER && fraction <= FCL_ROUND_UPPER) {
+    return { fraction40HQ: fraction, hint: "round_up_to_fcl" };
+  }
+  if (fraction > FCL_ROUND_UPPER) {
+    // Near an integer multiple of a full FCL?
+    const remainder = fraction - Math.floor(fraction);
+    if (remainder >= FCL_ROUND_LOWER || remainder <= 1 - FCL_ROUND_LOWER) {
+      return { fraction40HQ: fraction, hint: "multi_fcl" };
+    }
+    return { fraction40HQ: fraction, hint: "fcl" };
+  }
+  return { fraction40HQ: fraction, hint: "lcl" };
 }
 
 /**
- * Build container plans by grouping order recommendations by factory.
+ * Build per-factory container plans. Each plan lists its SKU orders plus a
+ * rough container-count estimate based on summed 40HQ fractions.
  */
 export async function buildContainerPlans(
   db: PrismaClient,
   recommendations: SkuRecommendation[]
 ): Promise<ContainerPlan[]> {
-  // Only plan for SKUs that should be ordered
-  const toOrder = recommendations.filter((r) => r.decision === "order" && r.adjustedQuantity > 0);
+  const toOrder = recommendations.filter(
+    (r) => r.decision === "order" && r.adjustedQuantity > 0
+  );
   if (toOrder.length === 0) return [];
 
-  // Load container rules
-  const containerRules = await db.containerRule.findMany();
-  const rules: Record<string, ContainerRuleData> = {};
-  for (const r of containerRules) {
-    rules[r.containerType] = {
-      containerType: r.containerType,
-      maxCbm: Number(r.maxCbm),
-      maxWeightKg: Number(r.maxWeightKg),
-      costEstimateUsd: Number(r.costEstimateUsd ?? 0),
-    };
-  }
-
-  const gp = rules["forty_gp"];
-  const hq = rules["forty_hq"];
-  if (!gp || !hq) {
-    throw new Error("Container rules not found. Run seed first.");
-  }
-
-  // Load SKU details for CBM/carton calculations
   const skuIds = toOrder.map((r) => r.skuId);
   const skuDetails = await db.sku.findMany({
     where: { id: { in: skuIds } },
@@ -70,86 +72,53 @@ export async function buildContainerPlans(
 
   // Group by factory
   const factoryGroups = new Map<string, SkuRecommendation[]>();
-
   for (const rec of toOrder) {
-    const factoryKey = rec.recommendedFactoryId ?? "unassigned";
-    if (!factoryGroups.has(factoryKey)) {
-      factoryGroups.set(factoryKey, []);
-    }
-    factoryGroups.get(factoryKey)!.push(rec);
+    const key = rec.recommendedFactoryId ?? "unassigned";
+    if (!factoryGroups.has(key)) factoryGroups.set(key, []);
+    factoryGroups.get(key)!.push(rec);
   }
 
-  // Build container plan for each factory
   const plans: ContainerPlan[] = [];
 
   for (const [factoryId, recs] of factoryGroups) {
     const lines: ContainerSkuLine[] = [];
-    let totalCbm = 0;
     let totalUnits = 0;
     let totalCost = 0;
+    let totalFractionHQ = 0;
 
     for (const rec of recs) {
       const sku = skuMap.get(rec.skuId);
       if (!sku) continue;
 
-      const cbmPerCarton = Number(sku.cbmPerCarton ?? 0);
-      const unitsPerCarton = sku.unitsPerCarton ?? 1;
+      const fclGp = sku.fclQty40GP ?? null;
+      const fclHq = sku.fclQty40HQ ?? null;
       const unitCost = Number(sku.unitCostUsd ?? 0);
-
-      // How many cartons needed for this quantity?
-      const cartons = unitsPerCarton > 0
-        ? Math.ceil(rec.adjustedQuantity / unitsPerCarton)
-        : rec.adjustedQuantity;
-      const lineCbm = cartons * cbmPerCarton;
       const lineCost = rec.adjustedQuantity * unitCost;
+      const { fraction40HQ, hint } = calculateFclHint(rec.adjustedQuantity, fclHq);
 
       lines.push({
         skuId: rec.skuId,
         skuCode: rec.skuCode,
         skuName: sku.name,
         quantity: rec.adjustedQuantity,
-        cbmPerCarton,
-        unitsPerCarton,
-        cartons,
-        lineCbm: Math.round(lineCbm * 100) / 100,
+        fclQty40GP: fclGp,
+        fclQty40HQ: fclHq,
+        fraction40HQ: fraction40HQ != null ? Math.round(fraction40HQ * 100) / 100 : null,
+        hint,
         unitCost,
         lineCost: Math.round(lineCost * 100) / 100,
       });
 
-      totalCbm += lineCbm;
       totalUnits += rec.adjustedQuantity;
       totalCost += lineCost;
+      if (fraction40HQ != null) totalFractionHQ += fraction40HQ;
     }
 
-    // Determine container type and count
-    let containerType: "forty_gp" | "forty_hq";
-    let containerCount: number;
-    let maxCbm: number;
-    let shippingCostPerContainer: number;
+    // Rough container-count estimate (floor-plus-remainder logic).
+    // If no SKU had an FCL figure, leave estimatedContainers null.
+    const estimatedContainers =
+      totalFractionHQ > 0 ? Math.max(1, Math.ceil(totalFractionHQ)) : null;
 
-    if (totalCbm <= gp.maxCbm) {
-      containerType = "forty_gp";
-      containerCount = 1;
-      maxCbm = gp.maxCbm;
-      shippingCostPerContainer = gp.costEstimateUsd;
-    } else if (totalCbm <= hq.maxCbm) {
-      containerType = "forty_hq";
-      containerCount = 1;
-      maxCbm = hq.maxCbm;
-      shippingCostPerContainer = hq.costEstimateUsd;
-    } else {
-      // Need multiple containers — use 40HQ for efficiency
-      containerType = "forty_hq";
-      containerCount = Math.ceil(totalCbm / hq.maxCbm);
-      maxCbm = hq.maxCbm * containerCount;
-      shippingCostPerContainer = hq.costEstimateUsd;
-    }
-
-    const fillPercentage = maxCbm > 0
-      ? Math.round((totalCbm / maxCbm) * 1000) / 10
-      : 0;
-
-    // Get factory info
     let factoryName = "Unassigned";
     let country = "unknown";
     if (factoryId !== "unassigned") {
@@ -165,29 +134,12 @@ export async function buildContainerPlans(
       factoryName,
       country,
       skus: lines,
-      totalCbm: Math.round(totalCbm * 100) / 100,
       totalUnits,
       totalCost: Math.round(totalCost * 100) / 100,
-      containerType,
-      containerCount,
-      fillPercentage,
-      estimatedShippingCost: containerCount * shippingCostPerContainer,
+      totalFractionHQ: Math.round(totalFractionHQ * 100) / 100,
+      estimatedContainers,
     });
   }
 
   return plans;
-}
-
-/**
- * Calculate the CBM impact of a single SKU order.
- * Used in the per-SKU recommendation to show container space used.
- */
-export function calculateSkuCbmImpact(
-  quantity: number,
-  cbmPerCarton: number,
-  unitsPerCarton: number
-): number {
-  if (unitsPerCarton <= 0 || cbmPerCarton <= 0) return 0;
-  const cartons = Math.ceil(quantity / unitsPerCarton);
-  return Math.round(cartons * cbmPerCarton * 100) / 100;
 }

@@ -170,9 +170,8 @@ model Sku {
   category         String?                                    // e.g. "desk", "bookshelf"
   tier             SkuTier   @default(C)                      // Determines target inventory days
   vendorCode       String?   @map("vendor_code")             // WDS VENDOR# reference
-  cbmPerCarton     Decimal?  @map("cbm_per_carton")          // Cubic meters per carton
-  unitsPerCarton   Int?      @map("units_per_carton")        // Units in one carton
-  weightPerCartonKg Decimal? @map("weight_per_carton_kg")    // Weight per carton (kg)
+  fclQty40GP       Int?      @map("fcl_qty_40gp")             // Approx SKU units that fill one 40GP (factory quote)
+  fclQty40HQ       Int?      @map("fcl_qty_40hq")             // Approx SKU units that fill one 40HQ (factory quote)
   moq              Int?                                       // Minimum order quantity
   unitCostUsd      Decimal?  @map("unit_cost_usd")           // Current landed cost per unit
   defaultFactoryId String?   @map("default_factory_id") @db.Uuid  // Last factory used
@@ -285,8 +284,8 @@ model PendingVendorTransition {
   toFactoryId          String?                @map("to_factory_id") @db.Uuid
   newUnitCost          Decimal?               @map("new_unit_cost")
   newMoq               Int?                   @map("new_moq")
-  newCbmCarton         Decimal?               @map("new_cbm_carton")
-  newUnitsCarton       Int?                   @map("new_units_carton")
+  newFclQty40GP        Int?                   @map("new_fcl_qty_40gp")
+  newFclQty40HQ        Int?                   @map("new_fcl_qty_40hq")
   reason               String?
   expectedFirstPoDate  DateTime?              @map("expected_first_po_date") @db.Date
   status               VendorTransitionStatus @default(pending)
@@ -574,7 +573,7 @@ model ReorderRecommendation {
   recommendedFactoryId        String?         @map("recommended_factory_id") @db.Uuid
   recommendedOrderByDate      DateTime?       @map("recommended_order_by_date") @db.Date
   projectedStockoutDate       DateTime?       @map("projected_stockout_date") @db.Date
-  containerCbmImpact          Decimal?        @map("container_cbm_impact")
+  fclFractionHQ               Decimal?        @map("fcl_fraction_hq")         // Fraction of a 40HQ FCL this order represents
   explanation                 String                                          // Plain English
   isCurrent                   Boolean         @default(true) @map("is_current")
 

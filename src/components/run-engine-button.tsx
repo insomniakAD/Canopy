@@ -11,7 +11,7 @@ interface RunResult {
     watchCount: number;
     doNotOrderCount: number;
     totalOrderUnits: number;
-    totalOrderCbm: number;
+    totalFractionHQ: number;
   };
   error?: string;
 }
@@ -87,7 +87,7 @@ export function RunEngineButton() {
               <strong>{result.summary.orderCount}</strong> to order,{" "}
               <strong>{result.summary.watchCount}</strong> to watch,{" "}
               <strong>{result.summary.doNotOrderCount}</strong> do not order.{" "}
-              Total: {result.summary.totalOrderUnits.toLocaleString()} units / {result.summary.totalOrderCbm.toFixed(1)} CBM.
+              Total: {result.summary.totalOrderUnits.toLocaleString()} units / ~{result.summary.totalFractionHQ.toFixed(1)} × 40HQ.
             </p>
           ) : (
             <p>{result.error}</p>

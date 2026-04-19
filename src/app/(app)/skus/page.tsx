@@ -19,8 +19,8 @@ async function loadRecommendations() {
     const dnoRecs = recs.filter((r) => r.decision === "do_not_order");
 
     const totalUnits = orderRecs.reduce((s, r) => s + r.adjustedQuantity, 0);
-    const totalCbm = orderRecs.reduce(
-      (s, r) => s + (r.containerCbmImpact ? Number(r.containerCbmImpact) : 0),
+    const totalFractionHQ = orderRecs.reduce(
+      (s, r) => s + (r.fclFractionHQ ? Number(r.fclFractionHQ) : 0),
       0
     );
 
@@ -53,7 +53,7 @@ async function loadRecommendations() {
       watchCount: watchRecs.length,
       dnoCount: dnoRecs.length,
       totalUnits,
-      totalCbm,
+      totalFractionHQ,
       lastRun: recs[0]?.calculationDate ?? null,
     };
   } catch {
@@ -78,7 +78,7 @@ export default async function SkuPlanningPage() {
     );
   }
 
-  const { recs, orderCount, watchCount, dnoCount, totalUnits, totalCbm, lastRun } = data;
+  const { recs, orderCount, watchCount, dnoCount, totalUnits, totalFractionHQ, lastRun } = data;
   const hasRecs = recs.length > 0;
 
   return (
@@ -101,7 +101,7 @@ export default async function SkuPlanningPage() {
         <StatCard label="Watch" value={watchCount} accent="amber" />
         <StatCard label="Do Not Order" value={dnoCount} accent="default" />
         <StatCard label="Total Units" value={totalUnits.toLocaleString()} accent="blue" />
-        <StatCard label="Total CBM" value={`${totalCbm.toFixed(1)}`} accent="default" />
+        <StatCard label="~40HQ Containers" value={totalFractionHQ.toFixed(1)} accent="default" />
       </div>
 
       {hasRecs ? (

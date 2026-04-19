@@ -218,14 +218,12 @@ export default async function SkuDetailPage({
                   <dd className="text-right font-mono">{fmtInt(sku.moq)}</dd>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <dt className="text-[var(--c-text-secondary)]">CBM / Carton</dt>
-                  <dd className="text-right font-mono">
-                    {sku.cbmPerCarton != null ? Number(sku.cbmPerCarton).toFixed(3) : "—"}
-                  </dd>
+                  <dt className="text-[var(--c-text-secondary)]">FCL Qty 40GP</dt>
+                  <dd className="text-right font-mono">{fmtInt(sku.fclQty40GP)}</dd>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <dt className="text-[var(--c-text-secondary)]">Units / Carton</dt>
-                  <dd className="text-right font-mono">{fmtInt(sku.unitsPerCarton)}</dd>
+                  <dt className="text-[var(--c-text-secondary)]">FCL Qty 40HQ</dt>
+                  <dd className="text-right font-mono">{fmtInt(sku.fclQty40HQ)}</dd>
                 </div>
               </dl>
             </div>
@@ -263,17 +261,15 @@ export default async function SkuDetailPage({
                   </dd>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <dt className="text-[var(--c-text-secondary)]">CBM / Carton</dt>
+                  <dt className="text-[var(--c-text-secondary)]">FCL Qty 40GP</dt>
                   <dd className="text-right font-mono">
-                    {pendingTransition.newCbmCarton != null
-                      ? Number(pendingTransition.newCbmCarton).toFixed(3)
-                      : "—"}
+                    {fmtInt(pendingTransition.newFclQty40GP)}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <dt className="text-[var(--c-text-secondary)]">Units / Carton</dt>
+                  <dt className="text-[var(--c-text-secondary)]">FCL Qty 40HQ</dt>
                   <dd className="text-right font-mono">
-                    {fmtInt(pendingTransition.newUnitsCarton)}
+                    {fmtInt(pendingTransition.newFclQty40HQ)}
                   </dd>
                 </div>
               </dl>
@@ -411,7 +407,7 @@ export default async function SkuDetailPage({
             {pendingTransition && (
               <p className="text-sm italic text-[var(--c-text-secondary)] mb-4">
                 Vendor transition pending. This recommended order uses the
-                current vendor&apos;s MOQ, CBM/carton, and unit cost. The new
+                current vendor&apos;s MOQ, FCL quantities, and unit cost. The new
                 vendor&apos;s terms take effect on the PO after this one.
               </p>
             )}
@@ -612,10 +608,10 @@ export default async function SkuDetailPage({
                 <span className="text-[var(--c-text-secondary)]">Lead Time</span>
                 <span>{rec.leadTimeDays} days</span>
               </div>
-              {rec.containerCbmImpact && (
+              {rec.fclFractionHQ != null && Number(rec.fclFractionHQ) > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-[var(--c-text-secondary)]">Container CBM Impact</span>
-                  <span>{fmtNum(Number(rec.containerCbmImpact))} CBM</span>
+                  <span className="text-[var(--c-text-secondary)]">40HQ Load Fraction</span>
+                  <span>~{fmtNum(Number(rec.fclFractionHQ), 2)}× 40HQ</span>
                 </div>
               )}
             </div>
@@ -655,16 +651,16 @@ export default async function SkuDetailPage({
                 <span>${Number(sku.unitCostUsd).toFixed(2)}</span>
               </div>
             )}
-            {sku.cbmPerCarton && (
+            {sku.fclQty40GP != null && (
               <div className="flex justify-between">
-                <span className="text-[var(--c-text-secondary)]">CBM per Carton</span>
-                <span>{Number(sku.cbmPerCarton).toFixed(3)}</span>
+                <span className="text-[var(--c-text-secondary)]">FCL Qty (40GP)</span>
+                <span>{fmtInt(sku.fclQty40GP)} units</span>
               </div>
             )}
-            {sku.unitsPerCarton && (
+            {sku.fclQty40HQ != null && (
               <div className="flex justify-between">
-                <span className="text-[var(--c-text-secondary)]">Units per Carton</span>
-                <span>{sku.unitsPerCarton}</span>
+                <span className="text-[var(--c-text-secondary)]">FCL Qty (40HQ)</span>
+                <span>{fmtInt(sku.fclQty40HQ)} units</span>
               </div>
             )}
           </div>

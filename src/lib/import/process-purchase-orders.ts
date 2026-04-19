@@ -238,7 +238,7 @@ export async function processPurchaseOrders(
 
       // Auto-consume a pending vendor transition if this PO matches it.
       // A PO landing on the new vendor confirms the switch: apply the
-      // captured new cost/MOQ/CBM/units to the SKU, move defaultFactory,
+      // captured new cost/MOQ/FCL quantities to the SKU, move defaultFactory,
       // and flip the transition to "consumed".
       const pending = await db.pendingVendorTransition.findFirst({
         where: {
@@ -253,8 +253,8 @@ export async function processPurchaseOrders(
         };
         if (pending.newUnitCost != null) skuUpdate.unitCostUsd = pending.newUnitCost;
         if (pending.newMoq != null) skuUpdate.moq = pending.newMoq;
-        if (pending.newCbmCarton != null) skuUpdate.cbmPerCarton = pending.newCbmCarton;
-        if (pending.newUnitsCarton != null) skuUpdate.unitsPerCarton = pending.newUnitsCarton;
+        if (pending.newFclQty40GP != null) skuUpdate.fclQty40GP = pending.newFclQty40GP;
+        if (pending.newFclQty40HQ != null) skuUpdate.fclQty40HQ = pending.newFclQty40HQ;
         await db.sku.update({ where: { id: sku.id }, data: skuUpdate });
         await db.pendingVendorTransition.update({
           where: { id: pending.id },

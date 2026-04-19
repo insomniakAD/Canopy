@@ -15,7 +15,7 @@ interface CountryRow {
   country: string;
   skus: number;
   units: number;
-  cbm: number;
+  fractionHQ: number;
   cost: number;
 }
 
@@ -37,7 +37,7 @@ export function CountryExport({ rows }: { rows: CountryRow[] }) {
     Country: c.country,
     SKUs: c.skus,
     Units: c.units,
-    CBM: c.cbm.toFixed(1),
+    "40HQ Fraction": c.fractionHQ.toFixed(2),
     Cost: c.cost.toFixed(0),
   }));
 
