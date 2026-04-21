@@ -82,6 +82,17 @@ export default async function ImportPage() {
             <ul className="space-y-1 text-[var(--c-text-secondary)]">
               <li>&bull; <strong>Purchase Orders</strong> — Open and historical POs from WDS</li>
               <li>&bull; <strong>ASIN Mapping</strong> — Links Amazon ASINs to WDS SKU codes</li>
+              <li>
+                &bull; <strong>Item Update</strong> — Bulk-update SKU attributes, vendors, and kit relationships
+                {" "}
+                <a
+                  href="/templates/ItemUpdateTemplate.xlsx"
+                  download
+                  className="text-[var(--c-accent)] hover:underline font-medium"
+                >
+                  Download template →
+                </a>
+              </li>
             </ul>
           </div>
         </div>

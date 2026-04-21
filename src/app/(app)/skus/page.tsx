@@ -2,6 +2,25 @@ import { db } from "@/lib/db";
 import { Card, StatCard } from "@/components/ui";
 import { SkuTable } from "./sku-table";
 import { RunEngineButton } from "@/components/run-engine-button";
+import { TransitionsTable, type TransitionRow } from "./transitions-table";
+
+async function loadPendingTransitions() {
+  try {
+    const rows = await db.pendingVendorTransition.findMany({
+      where: { status: "pending" },
+      orderBy: { createdAt: "desc" },
+      include: {
+        sku: { select: { skuCode: true, name: true } },
+        fromFactory: { select: { name: true, vendorCode: true } },
+        toFactory: { select: { name: true, vendorCode: true } },
+      },
+      take: 50,
+    });
+    return { ok: true as const, rows };
+  } catch {
+    return { ok: false as const, rows: [] };
+  }
+}
 
 async function loadRecommendations() {
   try {
@@ -62,7 +81,10 @@ async function loadRecommendations() {
 }
 
 export default async function SkuPlanningPage() {
-  const data = await loadRecommendations();
+  const [data, transitions] = await Promise.all([
+    loadRecommendations(),
+    loadPendingTransitions(),
+  ]);
 
   if (!data.ok) {
     return (
@@ -113,6 +135,44 @@ export default async function SkuPlanningPage() {
           </p>
         </Card>
       )}
+
+      {/* Pending Vendor Transitions */}
+      <Card
+        className="mt-6"
+        title="Pending Vendor Transitions"
+        subtitle={
+          transitions.ok
+            ? transitions.rows.length > 0
+              ? `${transitions.rows.length} awaiting first PO`
+              : "None pending"
+            : "Database not connected"
+        }
+      >
+        {!transitions.ok ? (
+          <p className="text-sm text-[var(--c-text-tertiary)] py-4">Database not connected.</p>
+        ) : (
+          <TransitionsTable
+            rows={transitions.rows.map<TransitionRow>((t) => ({
+              id: t.id,
+              createdAt: t.createdAt.toISOString(),
+              reason: t.reason,
+              expectedFirstPoDate: t.expectedFirstPoDate
+                ? t.expectedFirstPoDate.toISOString()
+                : null,
+              newVendorCode: t.newVendorCode,
+              newUnitCost: t.newUnitCost != null ? Number(t.newUnitCost) : null,
+              newMoq: t.newMoq,
+              sku: { skuCode: t.sku.skuCode, name: t.sku.name },
+              fromFactory: t.fromFactory
+                ? { name: t.fromFactory.name, vendorCode: t.fromFactory.vendorCode }
+                : null,
+              toFactory: t.toFactory
+                ? { name: t.toFactory.name, vendorCode: t.toFactory.vendorCode }
+                : null,
+            }))}
+          />
+        )}
+      </Card>
     </div>
   );
 }
