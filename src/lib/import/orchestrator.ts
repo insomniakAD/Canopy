@@ -37,30 +37,10 @@ export async function runImport(
 ): Promise<ImportSummary> {
   const { buffer, fileName, importType, uploadedById } = request;
 
-  // --- Step 1: Check for duplicate file ---
+  // --- Step 1: Hash the file (stored for audit trail, not used to block re-imports) ---
+  // Duplicate file detection was removed — WDS and Amazon reports frequently
+  // reuse the same filename, so blocking on file hash causes false positives.
   const fileHash = hashFileBuffer(buffer);
-  const existingBatch = await db.importBatch.findFirst({
-    where: { fileHash, status: "completed" },
-  });
-  if (existingBatch) {
-    const when = existingBatch.createdAt.toLocaleDateString();
-    return {
-      batchId: existingBatch.id,
-      importType,
-      fileName,
-      rowCount: 0,
-      rowsImported: 0,
-      rowsSkipped: 0,
-      rowsErrored: 1,
-      errors: [
-        {
-          rowNumber: 0,
-          errorType: "duplicate",
-          message: `This exact file was already uploaded on ${when}. File: "${existingBatch.fileName}".`,
-        },
-      ],
-    };
-  }
 
   // --- Step 2: Create import batch record ---
   const batch = await db.importBatch.create({

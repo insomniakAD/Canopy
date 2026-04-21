@@ -199,8 +199,14 @@ export function FileUploader({
       {result && (
         <div className="mt-4 bg-[var(--c-card-bg)] border border-[var(--c-border)] rounded-xl px-5 py-4">
           <div className="flex items-center gap-2 mb-3">
-            <Badge variant={result.summary.rowsErrored === 0 ? "success" : "warning"}>
-              {result.summary.rowsErrored === 0 ? "Success" : "Partial Import"}
+            <Badge variant={
+              result.summary.rowsErrored > 0 ? "warning" :
+              result.summary.rowsImported === 0 ? "neutral" :
+              "success"
+            }>
+              {result.summary.rowsErrored > 0 ? "Partial Import" :
+               result.summary.rowsImported === 0 ? "Nothing imported" :
+               "Success"}
             </Badge>
             <span className="text-sm text-[var(--c-text-secondary)]">{result.summary.fileName}</span>
           </div>
