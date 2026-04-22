@@ -5,12 +5,10 @@ import { Badge } from "@/components/ui";
 
 const IMPORT_TYPES = [
   { value: "wds_inventory", label: "WDS Inventory", requires: [] as string[] },
-  { value: "kit_composition", label: "Kit Composition", requires: ["wds_inventory"] },
-  { value: "asin_mapping", label: "ASIN Mapping", requires: ["wds_inventory"] },
   { value: "wds_monthly_sales", label: "WDS Monthly Sales", requires: ["wds_inventory"] },
-  { value: "amazon_sales", label: "Amazon Sales Diagnostic", requires: ["wds_inventory", "asin_mapping"] },
-  { value: "amazon_vendor_central", label: "Amazon Vendor Central", requires: ["wds_inventory", "asin_mapping"] },
-  { value: "amazon_forecast", label: "Amazon Forecasting", requires: ["wds_inventory", "asin_mapping"] },
+  { value: "amazon_sales", label: "Amazon Sales Diagnostic", requires: ["wds_inventory"] },
+  { value: "amazon_vendor_central", label: "Amazon Vendor Central", requires: ["wds_inventory"] },
+  { value: "amazon_forecast", label: "Amazon Forecasting", requires: ["wds_inventory"] },
   { value: "purchase_orders", label: "Purchase Orders", requires: ["wds_inventory"] },
   { value: "di_orders", label: "Amazon DI Orders", requires: ["wds_inventory"] },
   { value: "item_update", label: "Item Update", requires: ["wds_inventory"] },

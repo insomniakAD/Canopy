@@ -16,6 +16,48 @@ function typeLabel(t: string) {
   return t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+const FRESHNESS_CATEGORIES = [
+  {
+    label: "Core",
+    sources: [
+      { key: "wds_inventory", label: "WDS Inventory" },
+      { key: "amazon_sales", label: "Amazon Sales Diagnostic" },
+      { key: "amazon_vendor_central", label: "Amazon Vendor Central" },
+      { key: "amazon_forecast", label: "Amazon Forecasting" },
+    ],
+  },
+  {
+    label: "Periodic",
+    sources: [
+      { key: "wds_monthly_sales", label: "WDS Monthly Sales" },
+      { key: "purchase_orders", label: "Purchase Orders" },
+      { key: "di_orders", label: "DI Orders" },
+    ],
+  },
+  {
+    label: "As-needed",
+    sources: [
+      { key: "item_update", label: "Item Update" },
+    ],
+  },
+] as const;
+
+function freshnessVariant(date: Date | null): "success" | "warning" | "error" | "neutral" {
+  if (!date) return "neutral";
+  const days = (Date.now() - new Date(date).getTime()) / (1000 * 60 * 60 * 24);
+  if (days < 7) return "success";
+  if (days <= 14) return "warning";
+  return "error";
+}
+
+function freshnessLabel(date: Date | null): string {
+  if (!date) return "Never";
+  const days = Math.floor((Date.now() - new Date(date).getTime()) / (1000 * 60 * 60 * 24));
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return `${days}d ago`;
+}
+
 async function loadHistory() {
   try {
     const batches = await db.importBatch.findMany({
@@ -31,24 +73,30 @@ async function loadHistory() {
   }
 }
 
-async function loadCompletedTypes(): Promise<string[]> {
+async function loadFreshness(): Promise<Record<string, Date | null>> {
+  const allKeys = FRESHNESS_CATEGORIES.flatMap((c) => c.sources.map((s) => s.key));
   try {
-    const completed = await db.importBatch.findMany({
-      where: { status: "completed" },
-      select: { importType: true },
-      distinct: ["importType"],
+    const rows = await db.importBatch.groupBy({
+      by: ["importType"],
+      where: { status: "completed", importType: { in: [...allKeys] } },
+      _max: { createdAt: true },
     });
-    return completed.map((b) => b.importType);
+    const map: Record<string, Date | null> = Object.fromEntries(allKeys.map((k) => [k, null]));
+    for (const row of rows) {
+      map[row.importType] = row._max.createdAt ?? null;
+    }
+    return map;
   } catch {
-    return [];
+    return Object.fromEntries(allKeys.map((k) => [k, null]));
   }
 }
 
 export default async function ImportPage() {
-  const [data, completedTypes] = await Promise.all([
+  const [data, freshness] = await Promise.all([
     loadHistory(),
-    loadCompletedTypes(),
+    loadFreshness(),
   ]);
+  const completedTypes = Object.entries(freshness).filter(([, d]) => d !== null).map(([k]) => k);
 
   return (
     <div>
@@ -56,6 +104,37 @@ export default async function ImportPage() {
       <p className="text-sm text-[var(--c-text-secondary)] mb-6">
         Upload Excel or CSV files from WDS and Amazon to keep Canopy&apos;s data current.
       </p>
+
+      {/* Data freshness */}
+      <Card title="Data Freshness" className="mb-6">
+        <div className="divide-y divide-[var(--c-border)]">
+          {FRESHNESS_CATEGORIES.map((cat) => (
+            <div key={cat.label} className="py-4 first:pt-0 last:pb-0">
+              <p className="text-xs font-medium text-[var(--c-text-secondary)] uppercase tracking-wide mb-3">
+                {cat.label}
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {cat.sources.map((source) => {
+                  const date = freshness[source.key] ?? null;
+                  return (
+                    <div key={source.key} className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 bg-[var(--c-page-bg)]">
+                      <span className="text-sm text-[var(--c-text-primary)]">{source.label}</span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {date && (
+                          <span className="text-xs text-[var(--c-text-tertiary)] whitespace-nowrap">
+                            {fmtDate(date)}
+                          </span>
+                        )}
+                        <Badge variant={freshnessVariant(date)}>{freshnessLabel(date)}</Badge>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
 
       <ImportClient completedTypes={completedTypes} />
 
@@ -81,7 +160,6 @@ export default async function ImportPage() {
             <p className="font-medium text-[var(--c-text-primary)] mb-1">Other</p>
             <ul className="space-y-1 text-[var(--c-text-secondary)]">
               <li>&bull; <strong>Purchase Orders</strong> — Open and historical POs from WDS</li>
-              <li>&bull; <strong>ASIN Mapping</strong> — Links Amazon ASINs to WDS SKU codes</li>
               <li>
                 &bull; <strong>Item Update</strong> — Bulk-update SKU attributes, vendors, and kit relationships
                 {" "}
