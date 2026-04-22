@@ -3,8 +3,14 @@
 import { useState, useRef, useCallback } from "react";
 import { Badge } from "@/components/ui";
 
-const IMPORT_TYPES = [
-  { value: "wds_inventory", label: "WDS Inventory", requires: [] as string[] },
+type ImportTypeOption = {
+  value: string;
+  label: string;
+  requires: readonly string[];
+};
+
+const DEFAULT_IMPORT_TYPES: readonly ImportTypeOption[] = [
+  { value: "wds_inventory", label: "WDS Inventory", requires: [] },
   { value: "wds_monthly_sales", label: "WDS Monthly Sales", requires: ["wds_inventory"] },
   { value: "amazon_sales", label: "Amazon Sales Diagnostic", requires: ["wds_inventory"] },
   { value: "amazon_vendor_central", label: "Amazon Vendor Central", requires: ["wds_inventory"] },
@@ -35,7 +41,7 @@ interface ImportResult {
 }
 
 function isTypeEnabled(
-  importType: (typeof IMPORT_TYPES)[number],
+  importType: ImportTypeOption,
   completedTypes: string[],
 ): boolean {
   return importType.requires.every((req) => completedTypes.includes(req));
@@ -43,9 +49,11 @@ function isTypeEnabled(
 
 export function FileUploader({
   completedTypes = [],
+  importTypes = DEFAULT_IMPORT_TYPES,
   onImportComplete,
 }: {
   completedTypes?: string[];
+  importTypes?: readonly ImportTypeOption[];
   onImportComplete?: () => void;
 }) {
   const [importType, setImportType] = useState<string>("");
@@ -120,7 +128,7 @@ export function FileUploader({
           className="w-full border border-[var(--c-border)] rounded-lg px-3 py-2 text-sm bg-[var(--c-card-bg)] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)] focus:border-transparent"
         >
           <option value="">Select import type…</option>
-          {IMPORT_TYPES.map((t) => {
+          {importTypes.map((t) => {
             const enabled = isTypeEnabled(t, completedTypes);
             return (
               <option key={t.value} value={t.value} disabled={!enabled}>

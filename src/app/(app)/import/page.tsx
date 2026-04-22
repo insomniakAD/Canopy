@@ -160,18 +160,15 @@ export default async function ImportPage() {
             <p className="font-medium text-[var(--c-text-primary)] mb-1">Other</p>
             <ul className="space-y-1 text-[var(--c-text-secondary)]">
               <li>&bull; <strong>Purchase Orders</strong> — Open and historical POs from WDS</li>
-              <li>
-                &bull; <strong>Item Update</strong> — Bulk-update SKU attributes, vendors, and kit relationships
-                {" "}
-                <a
-                  href="/templates/ItemUpdateTemplate.xlsx"
-                  download
-                  className="text-[var(--c-accent)] hover:underline font-medium"
-                >
-                  Download template →
-                </a>
-              </li>
+              <li>&bull; <strong>DI Orders</strong> — Amazon Direct Import orders</li>
             </ul>
+            <p className="text-xs text-[var(--c-text-tertiary)] mt-2">
+              SKU definition uploads (Item Update, Kit Composition, ASIN Mapping) live under{" "}
+              <a href="/admin/uploads" className="text-[var(--c-accent)] hover:underline">
+                Admin → Uploads
+              </a>
+              .
+            </p>
           </div>
         </div>
       </Card>
