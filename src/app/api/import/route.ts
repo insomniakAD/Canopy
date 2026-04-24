@@ -13,6 +13,9 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { runImport } from "@/lib/import";
+import { stageImport } from "@/lib/import/staging/orchestrator";
+import { usesStaging } from "@/lib/import/staging/registry";
+import { auth } from "@/auth";
 import type { ImportType } from "@/generated/prisma/client";
 
 const VALID_IMPORT_TYPES: ImportType[] = [
@@ -72,11 +75,55 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // --- Run the import ---
+    // Look up the uploader for batch attribution + auto-cancel scoping
+    const session = await auth();
+    const uploadedById = (session?.user as { id?: string } | undefined)?.id;
+
+    // --- New flow (Layer 3): import types registered for staging go through
+    // the two-phase preview → commit path. Other types still use the legacy
+    // direct-commit path until Commit 2b migrates them. ---
+    if (usesStaging(importType)) {
+      const stage = await stageImport(db, {
+        buffer,
+        fileName: file.name,
+        importType,
+        uploadedById,
+      });
+
+      const httpStatus = stage.blocked ? 422 : 200;
+      return Response.json(
+        {
+          mode: "staged",
+          batchId: stage.batchId,
+          importType: stage.importType,
+          fileName: stage.fileName,
+          blocked: stage.blocked,
+          summary: {
+            rowCount: stage.rowCount,
+            willImport: stage.willImport,
+            willSkip: stage.willSkip,
+            errorCount: stage.parseErrors.length,
+          },
+          gates: stage.gates,
+          diff: stage.diff,
+          errors: stage.parseErrors.map((e) => ({
+            row: e.rowNumber,
+            field: e.fieldName,
+            type: e.errorType,
+            message: e.message,
+            value: e.rawValue,
+          })),
+        },
+        { status: httpStatus }
+      );
+    }
+
+    // --- Legacy direct-commit path (unchanged) ---
     const result = await runImport(db, {
       buffer,
       fileName: file.name,
       importType,
+      uploadedById,
     });
 
     // Determine HTTP status
@@ -85,6 +132,7 @@ export async function POST(request: NextRequest) {
 
     return Response.json(
       {
+        mode: "direct",
         success: result.rowsImported > 0,
         summary: {
           batchId: result.batchId,

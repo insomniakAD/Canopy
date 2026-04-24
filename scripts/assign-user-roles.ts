@@ -7,8 +7,33 @@
  *
  * Usage: npx tsx scripts/assign-user-roles.ts
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+
+// Load .env manually if DATABASE_URL isn't in the process environment.
+// tsx doesn't auto-load .env the way the Prisma CLI does.
+if (!process.env.DATABASE_URL) {
+  try {
+    const envPath = resolve(process.cwd(), ".env");
+    const contents = readFileSync(envPath, "utf8");
+    for (const line of contents.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq < 0) continue;
+      const key = trimmed.slice(0, eq).trim();
+      let value = trimmed.slice(eq + 1).trim();
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      if (!process.env[key]) process.env[key] = value;
+    }
+  } catch {
+    // fall through — PrismaPg will error clearly if DATABASE_URL still missing
+  }
+}
 
 const USERS = [
   { email: "papp@winsome.com", name: "papp", role: "admin" as const },
