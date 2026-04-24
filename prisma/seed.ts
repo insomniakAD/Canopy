@@ -229,14 +229,32 @@ async function main() {
 
   await prisma.user.upsert({
     where: { email: "papp@winsome.com" },
-    update: { name: "papp" },
+    update: { name: "papp", role: UserRole.admin },
     create: {
       email: "papp@winsome.com",
       name: "papp",
       role: UserRole.admin,
     },
   });
-  console.log("  ✓ Admin user created (username: papp)\n");
+  await prisma.user.upsert({
+    where: { email: "golf@winsome.com" },
+    update: { name: "golf", role: UserRole.admin },
+    create: {
+      email: "golf@winsome.com",
+      name: "golf",
+      role: UserRole.admin,
+    },
+  });
+  await prisma.user.upsert({
+    where: { email: "buyer-test@winsome.com" },
+    update: { name: "buyer-test", role: UserRole.buyer },
+    create: {
+      email: "buyer-test@winsome.com",
+      name: "buyer-test",
+      role: UserRole.buyer,
+    },
+  });
+  console.log("  ✓ Users: papp (admin), golf (admin), buyer-test (buyer)\n");
 
   // -------------------------------------------------------
   // 8. System Settings (V2)

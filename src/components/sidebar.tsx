@@ -150,6 +150,13 @@ function UserMenu() {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
+  const role = (session?.user as { role?: string } | undefined)?.role;
+  const isAdmin = role === "admin";
+
+  const visibleItems = NAV_ITEMS.filter(
+    (item) => item.href !== "/admin" || isAdmin
+  );
 
   return (
     <nav className="fixed left-0 top-0 bottom-0 w-56 bg-[var(--c-sidebar-bg)] text-[var(--c-sidebar-text)] flex flex-col">
@@ -161,7 +168,7 @@ export function Sidebar() {
 
       {/* Nav items */}
       <div className="flex-1 py-4 space-y-1 px-3">
-        {NAV_ITEMS.map((item) => {
+        {visibleItems.map((item) => {
           const isActive =
             item.href === "/"
               ? pathname === "/"

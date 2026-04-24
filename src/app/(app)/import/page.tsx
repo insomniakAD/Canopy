@@ -91,12 +91,18 @@ async function loadFreshness(): Promise<Record<string, Date | null>> {
   }
 }
 
-export default async function ImportPage() {
-  const [data, freshness] = await Promise.all([
+export default async function ImportPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ forbidden?: string }>;
+}) {
+  const [data, freshness, sp] = await Promise.all([
     loadHistory(),
     loadFreshness(),
+    searchParams,
   ]);
   const completedTypes = Object.entries(freshness).filter(([, d]) => d !== null).map(([k]) => k);
+  const showForbidden = sp.forbidden === "admin";
 
   return (
     <div>
@@ -104,6 +110,17 @@ export default async function ImportPage() {
       <p className="text-sm text-[var(--c-text-secondary)] mb-6">
         Upload Excel or CSV files from WDS and Amazon to keep Canopy&apos;s data current.
       </p>
+
+      {showForbidden && (
+        <div className="mb-6 bg-[var(--c-error-bg)] border border-[var(--c-error-border)] rounded-xl px-5 py-4">
+          <p className="text-sm text-[var(--c-error-text)] font-medium">
+            Admin-only area
+          </p>
+          <p className="text-xs text-[var(--c-error-text-mid)] mt-1">
+            You don&apos;t have permission to view the Admin section. Contact papp or golf if you need access.
+          </p>
+        </div>
+      )}
 
       {/* Data freshness */}
       <Card title="Data Freshness" className="mb-6">

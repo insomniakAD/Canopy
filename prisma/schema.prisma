@@ -121,6 +121,14 @@ enum ImportStatus {
   failed
 }
 
+/// Two-phase import lifecycle for pre-commit diff preview (Layer 3).
+/// Null = legacy direct-commit batch.
+enum StagingStatus {
+  staged      // Parsed, validated, diff computed — awaiting user commit
+  committed   // Rows have been written to target tables
+  cancelled   // Staged batch was discarded without commit
+}
+
 /// Types of errors found during import
 enum ImportErrorType {
   missing_sku
@@ -662,6 +670,13 @@ model ImportBatch {
   status        ImportStatus @default(pending)
   errorSummary  String?      @map("error_summary")
   uploadedById  String?      @map("uploaded_by_id") @db.Uuid
+
+  // Two-phase staging (Layer 3): imports stage first, then the user
+  // previews the diff and either commits or cancels. Null stagingStatus
+  // means the batch came through the old direct-commit path.
+  stagingStatus StagingStatus? @map("staging_status")
+  stagedPayload Json?          @map("staged_payload") @db.JsonB
+  diffSummary   Json?          @map("diff_summary")   @db.JsonB
 
   createdAt   DateTime  @default(now()) @map("created_at")
   completedAt DateTime? @map("completed_at")
