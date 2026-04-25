@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
+import { auth } from "@/auth";
 import { Card, Badge } from "@/components/ui";
 import { ImportClient } from "./import-client";
+import { StagedBannerClient } from "./staged-banner-client";
 
 function fmtDate(d: Date | string | null) {
   if (!d) return "—";
@@ -73,6 +75,26 @@ async function loadHistory() {
   }
 }
 
+interface StagedBatch {
+  id: string;
+  importType: string;
+  fileName: string;
+  createdAt: Date;
+}
+
+async function loadStagedBatches(userId: string | undefined): Promise<StagedBatch[]> {
+  if (!userId) return [];
+  try {
+    return await db.importBatch.findMany({
+      where: { stagingStatus: "staged", uploadedById: userId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, importType: true, fileName: true, createdAt: true },
+    });
+  } catch {
+    return [];
+  }
+}
+
 async function loadFreshness(): Promise<Record<string, Date | null>> {
   const allKeys = FRESHNESS_CATEGORIES.flatMap((c) => c.sources.map((s) => s.key));
   try {
@@ -96,10 +118,14 @@ export default async function ImportPage({
 }: {
   searchParams: Promise<{ forbidden?: string }>;
 }) {
-  const [data, freshness, sp] = await Promise.all([
+  const session = await auth();
+  const userId = (session?.user as { id?: string } | undefined)?.id;
+
+  const [data, freshness, sp, stagedBatches] = await Promise.all([
     loadHistory(),
     loadFreshness(),
     searchParams,
+    loadStagedBatches(userId),
   ]);
   const completedTypes = Object.entries(freshness).filter(([, d]) => d !== null).map(([k]) => k);
   const showForbidden = sp.forbidden === "admin";
@@ -120,6 +146,11 @@ export default async function ImportPage({
             You don&apos;t have permission to view the Admin section. Contact papp or golf if you need access.
           </p>
         </div>
+      )}
+
+      {/* Staged-upload banner */}
+      {stagedBatches.length > 0 && (
+        <StagedBannerClient batches={stagedBatches} />
       )}
 
       {/* Data freshness */}
