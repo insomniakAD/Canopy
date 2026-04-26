@@ -181,7 +181,7 @@ async function writeFromPayload(
         data: { isKitComponent: true },
       });
     }
-  });
+  }, { timeout: 30000 });
 
   return { rowsImported: imported, rowsSkipped: 0 };
 }

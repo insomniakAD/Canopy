@@ -172,7 +172,7 @@ async function writeFromPayload(
       });
       imported++;
     }
-  });
+  }, { timeout: 30000 });
 
   return { rowsImported: imported, rowsSkipped: 0 };
 }

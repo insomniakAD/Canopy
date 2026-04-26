@@ -243,43 +243,54 @@ async function writeFromPayload(
   payload: WdsInventoryPayload
 ): Promise<WriteResult> {
   const snapshotDate = new Date(payload.snapshotDate);
+  const codes = payload.rows.map((r) => r.skuCode);
+
+  // Pre-fetch existing SKUs outside the transaction so no reads happen inside it.
+  const existingSkus = codes.length
+    ? await db.sku.findMany({ where: { skuCode: { in: codes } }, select: { id: true, skuCode: true } })
+    : [];
+  const skuIdByCode = new Map(existingSkus.map((s) => [s.skuCode, s.id]));
+
   let imported = 0;
 
-  await db.$transaction(async (tx) => {
-    for (const row of payload.rows) {
-      // Upsert the SKU record
-      const sku = await tx.sku.findUnique({ where: { skuCode: row.skuCode } });
-      if (!sku) {
-        await tx.sku.create({
-          data: { skuCode: row.skuCode, name: row.name, vendorCode: row.vendorCode, status: "active", tier: "C" },
-        });
-      } else {
-        const updates: { name?: string; vendorCode?: string } = {};
-        if (row.name) updates.name = row.name;
-        if (row.vendorCode) updates.vendorCode = row.vendorCode;
-        if (Object.keys(updates).length > 0) {
-          await tx.sku.update({ where: { skuCode: row.skuCode }, data: updates });
+  await db.$transaction(
+    async (tx) => {
+      for (const row of payload.rows) {
+        let skuId = skuIdByCode.get(row.skuCode);
+
+        if (!skuId) {
+          const created = await tx.sku.create({
+            data: { skuCode: row.skuCode, name: row.name, vendorCode: row.vendorCode, status: "active", tier: "C" },
+            select: { id: true },
+          });
+          skuId = created.id;
+          skuIdByCode.set(row.skuCode, skuId);
+        } else {
+          const updates: { name?: string; vendorCode?: string } = {};
+          if (row.name) updates.name = row.name;
+          if (row.vendorCode) updates.vendorCode = row.vendorCode;
+          if (Object.keys(updates).length > 0) {
+            await tx.sku.update({ where: { skuCode: row.skuCode }, data: updates });
+          }
         }
+
+        await tx.inventorySnapshot.create({
+          data: {
+            skuId,
+            locationId: payload.locationId,
+            quantityOnHand: row.onHand,
+            quantityReserved: row.reserved,
+            quantityAvailable: row.available,
+            snapshotDate,
+            importBatchId: batchId,
+          },
+        });
+
+        imported++;
       }
-
-      const skuRecord = await tx.sku.findUnique({ where: { skuCode: row.skuCode }, select: { id: true } });
-      if (!skuRecord) return;
-
-      await tx.inventorySnapshot.create({
-        data: {
-          skuId: skuRecord.id,
-          locationId: payload.locationId,
-          quantityOnHand: row.onHand,
-          quantityReserved: row.reserved,
-          quantityAvailable: row.available,
-          snapshotDate,
-          importBatchId: batchId,
-        },
-      });
-
-      imported++;
-    }
-  });
+    },
+    { timeout: 30000 }
+  );
 
   return { rowsImported: imported, rowsSkipped: 0 };
 }
