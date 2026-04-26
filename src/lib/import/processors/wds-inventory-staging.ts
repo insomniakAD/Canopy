@@ -245,39 +245,41 @@ async function writeFromPayload(
   const snapshotDate = new Date(payload.snapshotDate);
   let imported = 0;
 
-  for (const row of payload.rows) {
-    // Upsert the SKU record
-    const sku = await db.sku.findUnique({ where: { skuCode: row.skuCode } });
-    if (!sku) {
-      await db.sku.create({
-        data: { skuCode: row.skuCode, name: row.name, vendorCode: row.vendorCode, status: "active", tier: "C" },
-      });
-    } else {
-      const updates: { name?: string; vendorCode?: string } = {};
-      if (row.name) updates.name = row.name;
-      if (row.vendorCode) updates.vendorCode = row.vendorCode;
-      if (Object.keys(updates).length > 0) {
-        await db.sku.update({ where: { skuCode: row.skuCode }, data: updates });
+  await db.$transaction(async (tx) => {
+    for (const row of payload.rows) {
+      // Upsert the SKU record
+      const sku = await tx.sku.findUnique({ where: { skuCode: row.skuCode } });
+      if (!sku) {
+        await tx.sku.create({
+          data: { skuCode: row.skuCode, name: row.name, vendorCode: row.vendorCode, status: "active", tier: "C" },
+        });
+      } else {
+        const updates: { name?: string; vendorCode?: string } = {};
+        if (row.name) updates.name = row.name;
+        if (row.vendorCode) updates.vendorCode = row.vendorCode;
+        if (Object.keys(updates).length > 0) {
+          await tx.sku.update({ where: { skuCode: row.skuCode }, data: updates });
+        }
       }
+
+      const skuRecord = await tx.sku.findUnique({ where: { skuCode: row.skuCode }, select: { id: true } });
+      if (!skuRecord) return;
+
+      await tx.inventorySnapshot.create({
+        data: {
+          skuId: skuRecord.id,
+          locationId: payload.locationId,
+          quantityOnHand: row.onHand,
+          quantityReserved: row.reserved,
+          quantityAvailable: row.available,
+          snapshotDate,
+          importBatchId: batchId,
+        },
+      });
+
+      imported++;
     }
-
-    const skuRecord = await db.sku.findUnique({ where: { skuCode: row.skuCode }, select: { id: true } });
-    if (!skuRecord) continue;
-
-    await db.inventorySnapshot.create({
-      data: {
-        skuId: skuRecord.id,
-        locationId: payload.locationId,
-        quantityOnHand: row.onHand,
-        quantityReserved: row.reserved,
-        quantityAvailable: row.available,
-        snapshotDate,
-        importBatchId: batchId,
-      },
-    });
-
-    imported++;
-  }
+  });
 
   return { rowsImported: imported, rowsSkipped: 0 };
 }

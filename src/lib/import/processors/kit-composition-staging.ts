@@ -161,25 +161,27 @@ async function writeFromPayload(
 ): Promise<WriteResult> {
   let imported = 0;
 
-  for (const group of payload.groups) {
-    // Replace all components for this parent
-    await db.kitComponent.deleteMany({ where: { parentSkuId: group.parentSkuId } });
+  await db.$transaction(async (tx) => {
+    for (const group of payload.groups) {
+      // Replace all components for this parent
+      await tx.kitComponent.deleteMany({ where: { parentSkuId: group.parentSkuId } });
 
-    for (const child of group.children) {
-      await db.kitComponent.upsert({
-        where: { unique_kit_pair: { parentSkuId: group.parentSkuId, childSkuId: child.childSkuId } },
-        update: { quantityPerKit: child.quantity },
-        create: { parentSkuId: group.parentSkuId, childSkuId: child.childSkuId, quantityPerKit: child.quantity },
+      for (const child of group.children) {
+        await tx.kitComponent.upsert({
+          where: { unique_kit_pair: { parentSkuId: group.parentSkuId, childSkuId: child.childSkuId } },
+          update: { quantityPerKit: child.quantity },
+          create: { parentSkuId: group.parentSkuId, childSkuId: child.childSkuId, quantityPerKit: child.quantity },
+        });
+        imported++;
+      }
+
+      await tx.sku.update({ where: { id: group.parentSkuId }, data: { isKitParent: true } });
+      await tx.sku.updateMany({
+        where: { id: { in: group.children.map((c) => c.childSkuId) } },
+        data: { isKitComponent: true },
       });
-      imported++;
     }
-
-    await db.sku.update({ where: { id: group.parentSkuId }, data: { isKitParent: true } });
-    await db.sku.updateMany({
-      where: { id: { in: group.children.map((c) => c.childSkuId) } },
-      data: { isKitComponent: true },
-    });
-  }
+  });
 
   return { rowsImported: imported, rowsSkipped: 0 };
 }

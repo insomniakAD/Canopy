@@ -134,20 +134,22 @@ async function writeFromPayload(
   const snapshotDate = new Date(payload.snapshotDate);
   let imported = 0;
 
-  for (const row of payload.rows) {
-    await db.inventorySnapshot.create({
-      data: {
-        skuId: row.skuId,
-        locationId: payload.locationId,
-        quantityOnHand: row.sellable,
-        quantityReserved: row.unsellable,
-        quantityAvailable: row.sellable,
-        snapshotDate,
-        importBatchId: batchId,
-      },
-    });
-    imported++;
-  }
+  await db.$transaction(async (tx) => {
+    for (const row of payload.rows) {
+      await tx.inventorySnapshot.create({
+        data: {
+          skuId: row.skuId,
+          locationId: payload.locationId,
+          quantityOnHand: row.sellable,
+          quantityReserved: row.unsellable,
+          quantityAvailable: row.sellable,
+          snapshotDate,
+          importBatchId: batchId,
+        },
+      });
+      imported++;
+    }
+  });
 
   return { rowsImported: imported, rowsSkipped: 0 };
 }

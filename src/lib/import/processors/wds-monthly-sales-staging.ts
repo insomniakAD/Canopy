@@ -195,30 +195,32 @@ async function writeFromPayload(
   payload: WdsMonthlySalesPayload
 ): Promise<WriteResult> {
   let imported = 0;
-  for (const row of payload.rows) {
-    await db.salesRecord.upsert({
-      where: {
-        unique_sales_period: {
+  await db.$transaction(async (tx) => {
+    for (const row of payload.rows) {
+      await tx.salesRecord.upsert({
+        where: {
+          unique_sales_period: {
+            skuId: row.skuId,
+            channel: "domestic",
+            periodStartDate: new Date(row.periodStartDate),
+            periodEndDate: new Date(row.periodEndDate),
+          },
+        },
+        update: { quantity: row.quantity, importBatchId: batchId },
+        create: {
           skuId: row.skuId,
           channel: "domestic",
+          saleDate: new Date(row.saleDate),
           periodStartDate: new Date(row.periodStartDate),
           periodEndDate: new Date(row.periodEndDate),
+          quantity: row.quantity,
+          source: "wds_export",
+          importBatchId: batchId,
         },
-      },
-      update: { quantity: row.quantity, importBatchId: batchId },
-      create: {
-        skuId: row.skuId,
-        channel: "domestic",
-        saleDate: new Date(row.saleDate),
-        periodStartDate: new Date(row.periodStartDate),
-        periodEndDate: new Date(row.periodEndDate),
-        quantity: row.quantity,
-        source: "wds_export",
-        importBatchId: batchId,
-      },
-    });
-    imported++;
-  }
+      });
+      imported++;
+    }
+  });
   return { rowsImported: imported, rowsSkipped: 0 };
 }
 

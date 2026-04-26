@@ -259,57 +259,59 @@ async function writeFromPayload(
 ): Promise<WriteResult> {
   let imported = 0;
 
-  for (const po of payload.pos) {
-    const upsertedPo = await db.purchaseOrder.upsert({
-      where: { poNumber: po.poNumber },
-      update: {
-        status: po.status,
-        orderDate: po.orderDate ? new Date(po.orderDate) : null,
-        estimatedArrivalDate: po.estimatedArrivalDate ? new Date(po.estimatedArrivalDate) : null,
-      },
-      create: {
-        poNumber: po.poNumber,
-        factoryId: po.factoryId,
-        status: po.status,
-        orderDate: po.orderDate ? new Date(po.orderDate) : null,
-        estimatedArrivalDate: po.estimatedArrivalDate ? new Date(po.estimatedArrivalDate) : null,
-      },
-    });
-
-    for (const line of po.lineItems) {
-      const existingLine = await db.poLineItem.findFirst({
-        where: { poId: upsertedPo.id, skuId: line.skuId },
+  await db.$transaction(async (tx) => {
+    for (const po of payload.pos) {
+      const upsertedPo = await tx.purchaseOrder.upsert({
+        where: { poNumber: po.poNumber },
+        update: {
+          status: po.status,
+          orderDate: po.orderDate ? new Date(po.orderDate) : null,
+          estimatedArrivalDate: po.estimatedArrivalDate ? new Date(po.estimatedArrivalDate) : null,
+        },
+        create: {
+          poNumber: po.poNumber,
+          factoryId: po.factoryId,
+          status: po.status,
+          orderDate: po.orderDate ? new Date(po.orderDate) : null,
+          estimatedArrivalDate: po.estimatedArrivalDate ? new Date(po.estimatedArrivalDate) : null,
+        },
       });
 
-      if (existingLine) {
-        await db.poLineItem.update({
-          where: { id: existingLine.id },
-          data: { quantityOrdered: line.quantityOrdered, quantityReceived: line.quantityReceived, unitCostUsd: line.unitCostUsd },
+      for (const line of po.lineItems) {
+        const existingLine = await tx.poLineItem.findFirst({
+          where: { poId: upsertedPo.id, skuId: line.skuId },
         });
-      } else {
-        await db.poLineItem.create({
-          data: { poId: upsertedPo.id, skuId: line.skuId, quantityOrdered: line.quantityOrdered, quantityReceived: line.quantityReceived, unitCostUsd: line.unitCostUsd },
-        });
-      }
 
-      // Auto-consume vendor transition
-      if (line.pendingTransitionId && line.transitionData) {
-        const td = line.transitionData;
-        const skuUpdate: Record<string, unknown> = { defaultFactoryId: td.newDefaultFactoryId };
-        if (td.newUnitCost != null) skuUpdate.unitCostUsd = td.newUnitCost;
-        if (td.newMoq != null) skuUpdate.moq = td.newMoq;
-        if (td.newFclQty40GP != null) skuUpdate.fclQty40GP = td.newFclQty40GP;
-        if (td.newFclQty40HQ != null) skuUpdate.fclQty40HQ = td.newFclQty40HQ;
-        await db.sku.update({ where: { id: line.skuId }, data: skuUpdate });
-        await db.pendingVendorTransition.update({
-          where: { id: line.pendingTransitionId },
-          data: { status: "consumed" },
-        });
-      }
+        if (existingLine) {
+          await tx.poLineItem.update({
+            where: { id: existingLine.id },
+            data: { quantityOrdered: line.quantityOrdered, quantityReceived: line.quantityReceived, unitCostUsd: line.unitCostUsd },
+          });
+        } else {
+          await tx.poLineItem.create({
+            data: { poId: upsertedPo.id, skuId: line.skuId, quantityOrdered: line.quantityOrdered, quantityReceived: line.quantityReceived, unitCostUsd: line.unitCostUsd },
+          });
+        }
 
-      imported++;
+        // Auto-consume vendor transition
+        if (line.pendingTransitionId && line.transitionData) {
+          const td = line.transitionData;
+          const skuUpdate: Record<string, unknown> = { defaultFactoryId: td.newDefaultFactoryId };
+          if (td.newUnitCost != null) skuUpdate.unitCostUsd = td.newUnitCost;
+          if (td.newMoq != null) skuUpdate.moq = td.newMoq;
+          if (td.newFclQty40GP != null) skuUpdate.fclQty40GP = td.newFclQty40GP;
+          if (td.newFclQty40HQ != null) skuUpdate.fclQty40HQ = td.newFclQty40HQ;
+          await tx.sku.update({ where: { id: line.skuId }, data: skuUpdate });
+          await tx.pendingVendorTransition.update({
+            where: { id: line.pendingTransitionId },
+            data: { status: "consumed" },
+          });
+        }
+
+        imported++;
+      }
     }
-  }
+  });
 
   return { rowsImported: imported, rowsSkipped: 0 };
 }

@@ -178,23 +178,25 @@ async function writeFromPayload(
 ): Promise<WriteResult> {
   let imported = 0;
 
-  for (const row of payload.rows) {
-    const update: Record<string, unknown> = {};
+  await db.$transaction(async (tx) => {
+    for (const row of payload.rows) {
+      const update: Record<string, unknown> = {};
 
-    if (row.asin) {
-      if (row.previousAsinOwnerId) {
-        await db.sku.update({ where: { id: row.previousAsinOwnerId }, data: { asin: null } });
+      if (row.asin) {
+        if (row.previousAsinOwnerId) {
+          await tx.sku.update({ where: { id: row.previousAsinOwnerId }, data: { asin: null } });
+        }
+        update.asin = row.asin;
       }
-      update.asin = row.asin;
-    }
-    if (row.setKitParent) update.isKitParent = true;
-    if (row.setDiEligible) update.isDiEligible = true;
+      if (row.setKitParent) update.isKitParent = true;
+      if (row.setDiEligible) update.isDiEligible = true;
 
-    if (Object.keys(update).length > 0) {
-      await db.sku.update({ where: { id: row.skuId }, data: update });
+      if (Object.keys(update).length > 0) {
+        await tx.sku.update({ where: { id: row.skuId }, data: update });
+      }
+      imported++;
     }
-    imported++;
-  }
+  });
 
   return { rowsImported: imported, rowsSkipped: 0 };
 }

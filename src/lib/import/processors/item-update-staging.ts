@@ -390,69 +390,71 @@ async function writeFromPayload(
 ): Promise<WriteResult> {
   let imported = 0;
 
-  // Vendors
-  for (const v of payload.vendors) {
-    const existing = await db.factory.findUnique({ where: { vendorCode: v.vendorCode } });
-    if (!existing) {
-      await db.factory.create({ data: { vendorCode: v.vendorCode, name: v.name || `Vendor ${v.vendorCode}`, country: v.country } });
-    } else {
-      const update: { name?: string; country?: Country } = {};
-      if (v.name) update.name = v.name;
-      if (v.country) update.country = v.country;
-      if (Object.keys(update).length > 0) await db.factory.update({ where: { id: existing.id }, data: update });
-    }
-    imported++;
-  }
-
-  // Items
-  for (const item of payload.items) {
-    if (item.vendorTransition) {
-      const vt = item.vendorTransition;
-      const transitionData = {
-        skuId: item.skuId,
-        newVendorCode: vt.newVendorCode,
-        fromFactoryId: vt.fromFactoryId,
-        toFactoryId: vt.toFactoryId,
-        newUnitCost: vt.newUnitCost ?? undefined,
-        newMoq: vt.newMoq ?? undefined,
-        newFclQty40GP: vt.newFclQty40GP ?? undefined,
-        newFclQty40HQ: vt.newFclQty40HQ ?? undefined,
-        status: "pending" as const,
-      };
-      if (vt.existingPendingId) {
-        await db.pendingVendorTransition.update({ where: { id: vt.existingPendingId }, data: transitionData });
+  await db.$transaction(async (tx) => {
+    // Vendors
+    for (const v of payload.vendors) {
+      const existing = await tx.factory.findUnique({ where: { vendorCode: v.vendorCode } });
+      if (!existing) {
+        await tx.factory.create({ data: { vendorCode: v.vendorCode, name: v.name || `Vendor ${v.vendorCode}`, country: v.country } });
       } else {
-        await db.pendingVendorTransition.create({ data: transitionData });
+        const update: { name?: string; country?: Country } = {};
+        if (v.name) update.name = v.name;
+        if (v.country) update.country = v.country;
+        if (Object.keys(update).length > 0) await tx.factory.update({ where: { id: existing.id }, data: update });
       }
-    }
-    if (Object.keys(item.updates).length > 0) {
-      // Handle ASIN conflict: if moving an ASIN to this SKU, clear it from prior owner
-      if (item.updates.asin) {
-        const existingOwner = await db.sku.findUnique({ where: { asin: item.updates.asin as string } });
-        if (existingOwner && existingOwner.id !== item.skuId) {
-          await db.sku.update({ where: { id: existingOwner.id }, data: { asin: null } });
-        }
-      }
-      await db.sku.update({ where: { id: item.skuId }, data: item.updates });
-    }
-    imported++;
-  }
-
-  // Kit Groups
-  for (const group of payload.kitGroups) {
-    await db.kitComponent.deleteMany({ where: { parentSkuId: group.parentSkuId } });
-    for (const child of group.children) {
-      await db.kitComponent.create({
-        data: { parentSkuId: group.parentSkuId, childSkuId: child.childSkuId, quantityPerKit: child.quantity },
-      });
       imported++;
     }
-    await db.sku.update({ where: { id: group.parentSkuId }, data: { isKitParent: true } });
-    await db.sku.updateMany({
-      where: { id: { in: group.children.map((c) => c.childSkuId) } },
-      data: { isKitComponent: true },
-    });
-  }
+
+    // Items
+    for (const item of payload.items) {
+      if (item.vendorTransition) {
+        const vt = item.vendorTransition;
+        const transitionData = {
+          skuId: item.skuId,
+          newVendorCode: vt.newVendorCode,
+          fromFactoryId: vt.fromFactoryId,
+          toFactoryId: vt.toFactoryId,
+          newUnitCost: vt.newUnitCost ?? undefined,
+          newMoq: vt.newMoq ?? undefined,
+          newFclQty40GP: vt.newFclQty40GP ?? undefined,
+          newFclQty40HQ: vt.newFclQty40HQ ?? undefined,
+          status: "pending" as const,
+        };
+        if (vt.existingPendingId) {
+          await tx.pendingVendorTransition.update({ where: { id: vt.existingPendingId }, data: transitionData });
+        } else {
+          await tx.pendingVendorTransition.create({ data: transitionData });
+        }
+      }
+      if (Object.keys(item.updates).length > 0) {
+        // Handle ASIN conflict: if moving an ASIN to this SKU, clear it from prior owner
+        if (item.updates.asin) {
+          const existingOwner = await tx.sku.findUnique({ where: { asin: item.updates.asin as string } });
+          if (existingOwner && existingOwner.id !== item.skuId) {
+            await tx.sku.update({ where: { id: existingOwner.id }, data: { asin: null } });
+          }
+        }
+        await tx.sku.update({ where: { id: item.skuId }, data: item.updates });
+      }
+      imported++;
+    }
+
+    // Kit Groups
+    for (const group of payload.kitGroups) {
+      await tx.kitComponent.deleteMany({ where: { parentSkuId: group.parentSkuId } });
+      for (const child of group.children) {
+        await tx.kitComponent.create({
+          data: { parentSkuId: group.parentSkuId, childSkuId: child.childSkuId, quantityPerKit: child.quantity },
+        });
+        imported++;
+      }
+      await tx.sku.update({ where: { id: group.parentSkuId }, data: { isKitParent: true } });
+      await tx.sku.updateMany({
+        where: { id: { in: group.children.map((c) => c.childSkuId) } },
+        data: { isKitComponent: true },
+      });
+    }
+  });
 
   return { rowsImported: imported, rowsSkipped: 0 };
 }

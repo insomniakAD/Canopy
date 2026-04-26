@@ -147,33 +147,35 @@ async function writeFromPayload(
   const snapshotDate = new Date(payload.snapshotDate);
   let imported = 0;
 
-  for (const row of payload.rows) {
-    await db.amazonForecast.upsert({
-      where: {
-        unique_forecast_week: {
-          skuId: row.skuId,
-          weekStartDate: new Date(row.weekStartDate),
-          snapshotDate,
+  await db.$transaction(async (tx) => {
+    for (const row of payload.rows) {
+      await tx.amazonForecast.upsert({
+        where: {
+          unique_forecast_week: {
+            skuId: row.skuId,
+            weekStartDate: new Date(row.weekStartDate),
+            snapshotDate,
+          },
         },
-      },
-      update: {
-        weekNumber: row.weekNumber,
-        weekEndDate: new Date(row.weekEndDate),
-        forecastUnits: row.forecastUnits,
-        importBatchId: batchId,
-      },
-      create: {
-        skuId: row.skuId,
-        weekNumber: row.weekNumber,
-        weekStartDate: new Date(row.weekStartDate),
-        weekEndDate: new Date(row.weekEndDate),
-        forecastUnits: row.forecastUnits,
-        snapshotDate,
-        importBatchId: batchId,
-      },
-    });
-    imported++;
-  }
+        update: {
+          weekNumber: row.weekNumber,
+          weekEndDate: new Date(row.weekEndDate),
+          forecastUnits: row.forecastUnits,
+          importBatchId: batchId,
+        },
+        create: {
+          skuId: row.skuId,
+          weekNumber: row.weekNumber,
+          weekStartDate: new Date(row.weekStartDate),
+          weekEndDate: new Date(row.weekEndDate),
+          forecastUnits: row.forecastUnits,
+          snapshotDate,
+          importBatchId: batchId,
+        },
+      });
+      imported++;
+    }
+  });
 
   return { rowsImported: imported, rowsSkipped: 0 };
 }

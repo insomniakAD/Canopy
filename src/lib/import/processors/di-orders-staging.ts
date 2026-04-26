@@ -201,28 +201,42 @@ async function writeFromPayload(
 ): Promise<WriteResult> {
   let imported = 0;
 
-  for (const row of payload.rows) {
-    if (row.amazonPoNumber) {
-      const existing = await db.diOrder.findFirst({
-        where: { skuId: row.skuId, amazonPoNumber: row.amazonPoNumber },
-      });
-      if (existing) {
-        await db.diOrder.update({
-          where: { id: existing.id },
-          data: {
-            quantity: row.quantity,
-            orderDate: new Date(row.orderDate),
-            estimatedArrivalDate: row.estimatedArrivalDate ? new Date(row.estimatedArrivalDate) : null,
-            status: row.status,
-            factoryId: row.factoryId,
-            importBatchId: batchId,
-          },
+  await db.$transaction(async (tx) => {
+    for (const row of payload.rows) {
+      if (row.amazonPoNumber) {
+        const existing = await tx.diOrder.findFirst({
+          where: { skuId: row.skuId, amazonPoNumber: row.amazonPoNumber },
         });
+        if (existing) {
+          await tx.diOrder.update({
+            where: { id: existing.id },
+            data: {
+              quantity: row.quantity,
+              orderDate: new Date(row.orderDate),
+              estimatedArrivalDate: row.estimatedArrivalDate ? new Date(row.estimatedArrivalDate) : null,
+              status: row.status,
+              factoryId: row.factoryId,
+              importBatchId: batchId,
+            },
+          });
+        } else {
+          await tx.diOrder.create({
+            data: {
+              skuId: row.skuId,
+              amazonPoNumber: row.amazonPoNumber,
+              quantity: row.quantity,
+              orderDate: new Date(row.orderDate),
+              estimatedArrivalDate: row.estimatedArrivalDate ? new Date(row.estimatedArrivalDate) : null,
+              status: row.status,
+              factoryId: row.factoryId,
+              importBatchId: batchId,
+            },
+          });
+        }
       } else {
-        await db.diOrder.create({
+        await tx.diOrder.create({
           data: {
             skuId: row.skuId,
-            amazonPoNumber: row.amazonPoNumber,
             quantity: row.quantity,
             orderDate: new Date(row.orderDate),
             estimatedArrivalDate: row.estimatedArrivalDate ? new Date(row.estimatedArrivalDate) : null,
@@ -232,26 +246,14 @@ async function writeFromPayload(
           },
         });
       }
-    } else {
-      await db.diOrder.create({
-        data: {
-          skuId: row.skuId,
-          quantity: row.quantity,
-          orderDate: new Date(row.orderDate),
-          estimatedArrivalDate: row.estimatedArrivalDate ? new Date(row.estimatedArrivalDate) : null,
-          status: row.status,
-          factoryId: row.factoryId,
-          importBatchId: batchId,
-        },
-      });
-    }
 
-    if (row.isDiEligibleUpdate) {
-      await db.sku.update({ where: { id: row.skuId }, data: { isDiEligible: true } });
-    }
+      if (row.isDiEligibleUpdate) {
+        await tx.sku.update({ where: { id: row.skuId }, data: { isDiEligible: true } });
+      }
 
-    imported++;
-  }
+      imported++;
+    }
+  });
 
   return { rowsImported: imported, rowsSkipped: 0 };
 }

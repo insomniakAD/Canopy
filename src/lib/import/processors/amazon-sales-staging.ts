@@ -140,37 +140,39 @@ async function writeFromPayload(
   const periodEnd = new Date(payload.periodEndDate);
   let imported = 0;
 
-  for (const row of payload.rows) {
-    await db.salesRecord.upsert({
-      where: {
-        unique_sales_period: {
+  await db.$transaction(async (tx) => {
+    for (const row of payload.rows) {
+      await tx.salesRecord.upsert({
+        where: {
+          unique_sales_period: {
+            skuId: row.skuId,
+            channel: "amazon_1p",
+            periodStartDate: periodStart,
+            periodEndDate: periodEnd,
+          },
+        },
+        update: {
+          quantity: row.shippedUnits,
+          revenueUsd: row.shippedRevenue,
+          costUsd: row.shippedCogs,
+          importBatchId: batchId,
+        },
+        create: {
           skuId: row.skuId,
           channel: "amazon_1p",
+          saleDate: periodStart,
           periodStartDate: periodStart,
           periodEndDate: periodEnd,
+          quantity: row.shippedUnits,
+          revenueUsd: row.shippedRevenue,
+          costUsd: row.shippedCogs,
+          source: "amazon_report",
+          importBatchId: batchId,
         },
-      },
-      update: {
-        quantity: row.shippedUnits,
-        revenueUsd: row.shippedRevenue,
-        costUsd: row.shippedCogs,
-        importBatchId: batchId,
-      },
-      create: {
-        skuId: row.skuId,
-        channel: "amazon_1p",
-        saleDate: periodStart,
-        periodStartDate: periodStart,
-        periodEndDate: periodEnd,
-        quantity: row.shippedUnits,
-        revenueUsd: row.shippedRevenue,
-        costUsd: row.shippedCogs,
-        source: "amazon_report",
-        importBatchId: batchId,
-      },
-    });
-    imported++;
-  }
+      });
+      imported++;
+    }
+  });
 
   return { rowsImported: imported, rowsSkipped: 0 };
 }
