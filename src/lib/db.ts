@@ -19,6 +19,10 @@ function createPrismaClient() {
     connectionString: process.env.DATABASE_URL!,
     // Supabase uses SSL for external connections; accept their certificate
     ...(isProduction && { ssl: { rejectUnauthorized: false } }),
+    // Cap to 1 connection per process. Supabase free-tier session pooler has a
+    // small pool_size limit; each Vercel serverless invocation would otherwise
+    // create up to 10 connections by default and exhaust it under light load.
+    max: 1,
   });
   return new PrismaClient({ adapter });
 }
