@@ -14,9 +14,10 @@ import { PrismaClient } from "@/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 function createPrismaClient() {
+  const sslEnabled = process.env.DATABASE_SSL !== "false";
   const adapter = new PrismaPg({
     connectionString: process.env.DATABASE_URL!,
-    ssl: { rejectUnauthorized: false },
+    ...(sslEnabled && { ssl: { rejectUnauthorized: false } }),
   });
   return new PrismaClient({ adapter });
 }
