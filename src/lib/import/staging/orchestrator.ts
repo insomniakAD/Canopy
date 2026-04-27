@@ -300,6 +300,7 @@ function prepareSpreadsheet(
 ): { headers: string[]; rows: SpreadsheetRow[] } {
   // Raw-buffer processors don't use header-based parsing upfront.
   const rawBufferTypes: ImportType[] = [
+    "wds_active_items",
     "wds_inventory",
     "kit_composition",
     "asin_mapping",

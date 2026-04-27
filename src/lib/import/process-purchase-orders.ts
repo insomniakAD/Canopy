@@ -251,7 +251,7 @@ export async function processPurchaseOrders(
         const skuUpdate: Record<string, unknown> = {
           defaultFactoryId: po.factoryId,
         };
-        if (pending.newUnitCost != null) skuUpdate.unitCostUsd = pending.newUnitCost;
+        if (pending.newUnitCost != null) skuUpdate.factoryCost = pending.newUnitCost;
         if (pending.newMoq != null) skuUpdate.moq = pending.newMoq;
         if (pending.newFclQty40GP != null) skuUpdate.fclQty40GP = pending.newFclQty40GP;
         if (pending.newFclQty40HQ != null) skuUpdate.fclQty40HQ = pending.newFclQty40HQ;

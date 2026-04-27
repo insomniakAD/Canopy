@@ -71,7 +71,7 @@ function buildWhere(f: ParsedFilters): Prisma.SkuWhereInput {
 
   if (f.flags.has("missing_asin")) AND.push({ asin: null });
   if (f.flags.has("missing_fcl")) AND.push({ OR: [{ fclQty40GP: null }, { fclQty40HQ: null }] });
-  if (f.flags.has("missing_cost")) AND.push({ OR: [{ moq: null }, { unitCostUsd: null }] });
+  if (f.flags.has("missing_cost")) AND.push({ OR: [{ moq: null }, { factoryCost: null }] });
   if (f.flags.has("no_vendor")) AND.push({ vendorCode: null });
   if (f.flags.has("no_sales")) AND.push({ salesHistory: { none: {} } });
   if (f.flags.has("broken_kit")) AND.push({ isKitParent: true, kitComponentsAsParent: { none: {} } });
@@ -84,7 +84,7 @@ async function loadFlagCounts(activeOnly: Prisma.SkuWhereInput) {
   return Promise.all([
     db.sku.count({ where: { ...baseWhere, asin: null } }),
     db.sku.count({ where: { ...baseWhere, OR: [{ fclQty40GP: null }, { fclQty40HQ: null }] } }),
-    db.sku.count({ where: { ...baseWhere, OR: [{ moq: null }, { unitCostUsd: null }] } }),
+    db.sku.count({ where: { ...baseWhere, OR: [{ moq: null }, { factoryCost: null }] } }),
     db.sku.count({ where: { ...baseWhere, vendorCode: null } }),
     db.sku.count({ where: { ...baseWhere, salesHistory: { none: {} } } }),
     db.sku.count({ where: { ...baseWhere, isKitParent: true, kitComponentsAsParent: { none: {} } } }),
@@ -289,7 +289,7 @@ export default async function AdminSkusPage({
         tier: true,
         autoTier: true,
         vendorCode: true,
-        unitCostUsd: true,
+        factoryCost: true,
         moq: true,
         fclQty40GP: true,
         fclQty40HQ: true,
@@ -436,7 +436,7 @@ export default async function AdminSkusPage({
                         )}
                       </td>
                       <td className="px-4 py-3 text-right font-mono">
-                        {fmtMoney(r.unitCostUsd ? Number(r.unitCostUsd) : null)}
+                        {fmtMoney(r.factoryCost ? Number(r.factoryCost) : null)}
                       </td>
                       <td className="px-4 py-3 text-right font-mono">{fmtNum(r.moq)}</td>
                       <td className="px-4 py-3 text-right font-mono whitespace-nowrap">

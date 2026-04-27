@@ -25,7 +25,7 @@ import type {
 const YES = /^(y|yes|true|t|1)$/i;
 const NO = /^(n|no|false|f|0)$/i;
 const VALID_COUNTRIES: Country[] = ["china", "malaysia", "thailand", "indonesia"];
-const VALID_STATUS: SkuStatus[] = ["active", "discontinued", "seasonal"];
+const VALID_STATUS: SkuStatus[] = ["active", "discontinued", "end_of_life", "new_item"];
 const VALID_TIERS: SkuTier[] = ["A", "B", "C", "LP"];
 
 function cell(row: Record<string, unknown>, key: string | null): string {
@@ -281,7 +281,7 @@ async function parseToPayload(
         }
 
         if (!vendorTransition) {
-          if (newUnitCost !== null) updates.unitCostUsd = newUnitCost;
+          if (newUnitCost !== null) updates.factoryCost = newUnitCost;
           if (newMoq !== null) updates.moq = newMoq;
           if (newFclGp !== null) updates.fclQty40GP = newFclGp;
           if (newFclHq !== null) updates.fclQty40HQ = newFclHq;

@@ -297,7 +297,7 @@ async function writeFromPayload(
         if (line.pendingTransitionId && line.transitionData) {
           const td = line.transitionData;
           const skuUpdate: Record<string, unknown> = { defaultFactoryId: td.newDefaultFactoryId };
-          if (td.newUnitCost != null) skuUpdate.unitCostUsd = td.newUnitCost;
+          if (td.newUnitCost != null) skuUpdate.factoryCost = td.newUnitCost;
           if (td.newMoq != null) skuUpdate.moq = td.newMoq;
           if (td.newFclQty40GP != null) skuUpdate.fclQty40GP = td.newFclQty40GP;
           if (td.newFclQty40HQ != null) skuUpdate.fclQty40HQ = td.newFclQty40HQ;

@@ -20,7 +20,7 @@
 //
 // Notes:
 //   - The template never clears fields. Use the UI/DB to wipe values.
-//   - STATUS accepts active/discontinued/seasonal (case-insensitive).
+//   - STATUS accepts active/discontinued/end_of_life/new_item (case-insensitive).
 //   - TIER OVERRIDE accepts A/B/C/LP (case-insensitive) → sku.tier.
 //   - DI ENROLLED / KIT PARENT accept YES/NO (blank = no-op).
 //   - Kit Parent's COUNTRY OF ORIGIN lives on its vendor's Factory row —
@@ -36,7 +36,7 @@ const YES = /^(y|yes|true|t|1)$/i;
 const NO = /^(n|no|false|f|0)$/i;
 
 const VALID_COUNTRIES: Country[] = ["china", "malaysia", "thailand", "indonesia"];
-const VALID_STATUS: SkuStatus[] = ["active", "discontinued", "seasonal"];
+const VALID_STATUS: SkuStatus[] = ["active", "discontinued", "end_of_life", "new_item"];
 const VALID_TIERS: SkuTier[] = ["A", "B", "C", "LP"];
 
 function cell(row: Record<string, unknown>, key: string | null): string {
@@ -351,7 +351,7 @@ export async function processItemUpdate(
         }
 
         if (!isTransition) {
-          if (newUnitCost !== null) update.unitCostUsd = newUnitCost;
+          if (newUnitCost !== null) update.factoryCost = newUnitCost;
           if (newMoq !== null) update.moq = newMoq;
           if (newFclGp !== null) update.fclQty40GP = newFclGp;
           if (newFclHq !== null) update.fclQty40HQ = newFclHq;

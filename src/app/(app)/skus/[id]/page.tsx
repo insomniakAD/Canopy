@@ -208,9 +208,9 @@ export default async function SkuDetailPage({
                   </dd>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <dt className="text-[var(--c-text-secondary)]">Unit Cost</dt>
+                  <dt className="text-[var(--c-text-secondary)]">Factory Cost</dt>
                   <dd className="text-right font-mono">
-                    {sku.unitCostUsd != null ? `$${Number(sku.unitCostUsd).toFixed(2)}` : "—"}
+                    {sku.factoryCost != null ? `$${Number(sku.factoryCost).toFixed(2)}` : "—"}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-2">
@@ -645,10 +645,10 @@ export default async function SkuDetailPage({
                 <span>{fmtInt(sku.moq)} units</span>
               </div>
             )}
-            {sku.unitCostUsd && (
+            {sku.factoryCost && (
               <div className="flex justify-between">
-                <span className="text-[var(--c-text-secondary)]">Unit Cost</span>
-                <span>${Number(sku.unitCostUsd).toFixed(2)}</span>
+                <span className="text-[var(--c-text-secondary)]">Factory Cost</span>
+                <span>${Number(sku.factoryCost).toFixed(2)}</span>
               </div>
             )}
             {sku.fclQty40GP != null && (

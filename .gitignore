@@ -44,3 +44,8 @@ next-env.d.ts
 
 # Project memory (personal notes — keep on OneDrive, not GitHub)
 /memory
+
+# Skills installer internals (keep local, don't commit the pack source)
+/.claude/skills/.agents/
+/.claude/skills/.claude/
+/.claude/skills/skills-lock.json

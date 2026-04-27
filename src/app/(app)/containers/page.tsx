@@ -72,7 +72,7 @@ async function loadContainerData() {
             tier: true,
             fclQty40GP: true,
             fclQty40HQ: true,
-            unitCostUsd: true,
+            factoryCost: true,
           },
         },
         recommendedFactory: { select: { id: true, name: true, country: true } },
@@ -105,7 +105,7 @@ async function loadContainerData() {
       const qty = r.adjustedQuantity;
       const fclGp = r.sku.fclQty40GP ?? null;
       const fclHq = r.sku.fclQty40HQ ?? null;
-      const unitCost = r.sku.unitCostUsd ? Number(r.sku.unitCostUsd) : 0;
+      const unitCost = r.sku.factoryCost ? Number(r.sku.factoryCost) : 0;
       const cost = qty * unitCost;
       const { fraction40HQ, hint } = calculateFclHint(qty, fclHq);
 

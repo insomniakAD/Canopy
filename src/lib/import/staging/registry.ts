@@ -11,6 +11,7 @@
 
 import type { ImportType } from "@/generated/prisma/client";
 import type { ProcessorStagingContract } from "./types";
+import { wdsActiveItemsStaging } from "../processors/wds-active-items-staging";
 import { wdsMonthlySalesStaging } from "../processors/wds-monthly-sales-staging";
 import { amazonSalesStaging } from "../processors/amazon-sales-staging";
 import { amazonVendorCentralStaging } from "../processors/amazon-vendor-central-staging";
@@ -28,6 +29,7 @@ import { itemUpdateStaging } from "../processors/item-update-staging";
 export const STAGING_PROCESSORS: Partial<
   Record<ImportType, ProcessorStagingContract<unknown>>
 > = {
+  wds_active_items:       wdsActiveItemsStaging        as ProcessorStagingContract<unknown>,
   wds_monthly_sales:      wdsMonthlySalesStaging      as ProcessorStagingContract<unknown>,
   amazon_sales:           amazonSalesStaging           as ProcessorStagingContract<unknown>,
   amazon_vendor_central:  amazonVendorCentralStaging   as ProcessorStagingContract<unknown>,

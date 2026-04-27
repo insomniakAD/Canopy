@@ -5,9 +5,10 @@ import { Card } from "@/components/ui";
 import { FileUploader } from "@/components/file-uploader";
 
 const ADMIN_IMPORT_TYPES = [
-  { value: "item_update", label: "Item Update", requires: ["wds_inventory"] },
-  { value: "kit_composition", label: "Kit Composition", requires: ["wds_inventory"] },
-  { value: "asin_mapping", label: "ASIN Mapping", requires: ["wds_inventory"] },
+  { value: "wds_active_items", label: "WDS Active Items", requires: [] },
+  { value: "kit_composition",  label: "Kit Composition",  requires: ["wds_active_items"] },
+  { value: "asin_mapping",     label: "ASIN Mapping",     requires: ["wds_active_items"] },
+  { value: "item_update",      label: "Item Update",      requires: ["wds_active_items"] },
 ] as const;
 
 export function UploadsClient({ completedTypes }: { completedTypes: string[] }) {

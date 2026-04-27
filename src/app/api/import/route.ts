@@ -19,6 +19,7 @@ import { auth } from "@/auth";
 import type { ImportType } from "@/generated/prisma/client";
 
 const VALID_IMPORT_TYPES: ImportType[] = [
+  "wds_active_items",
   "wds_inventory",
   "wds_monthly_sales",
   "amazon_sales",
@@ -75,9 +76,14 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Look up the uploader for batch attribution + auto-cancel scoping
+    // Look up the uploader for batch attribution + auto-cancel scoping.
+    // Verify the user exists before passing the ID — a stale session after a
+    // DB reset would otherwise cause a FK violation on import_batches.
     const session = await auth();
-    const uploadedById = (session?.user as { id?: string } | undefined)?.id;
+    const sessionUserId = (session?.user as { id?: string } | undefined)?.id;
+    const uploadedById = sessionUserId
+      ? (await db.user.findUnique({ where: { id: sessionUserId }, select: { id: true } }))?.id
+      : undefined;
 
     // --- New flow (Layer 3): import types registered for staging go through
     // the two-phase preview → commit path. Other types still use the legacy

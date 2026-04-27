@@ -92,7 +92,7 @@ export async function buildContainerPlans(
 
       const fclGp = sku.fclQty40GP ?? null;
       const fclHq = sku.fclQty40HQ ?? null;
-      const unitCost = Number(sku.unitCostUsd ?? 0);
+      const unitCost = Number(sku.factoryCost ?? 0);
       const lineCost = rec.adjustedQuantity * unitCost;
       const { fraction40HQ, hint } = calculateFclHint(rec.adjustedQuantity, fclHq);
 

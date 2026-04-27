@@ -23,6 +23,15 @@ import type {
 
 const TRUTHY = /^(y|yes|x|true|t|1|kit)$/i;
 
+// WDS CSV exports wrap values as ="10115" to prevent Excel auto-formatting.
+// Strip that wrapper so we get the bare value regardless of source.
+function cleanCell(v: unknown): string {
+  if (v == null) return "";
+  const s = String(v).trim();
+  const m = s.match(/^="(.*)"$/);
+  return m ? m[1].trim() : s;
+}
+
 // ---------- Payload shape ----------
 
 interface StagedAsinRow {
@@ -58,8 +67,10 @@ async function parseToPayload(
   });
 
   const findHeader = (regex: RegExp) => headers.find((h) => regex.test(h)) ?? null;
-  const itemHeader = findHeader(/^ITEM\s*#?$|^SKU$/i);
-  const asinHeader = findHeader(/^ASIN$/i);
+  // Matches "ITEM#", "ITEM NUMBER", "ITEM", "SKU" (covers both WDS CSV and custpmatrix sheet)
+  const itemHeader = findHeader(/^ITEM(\s*(NUMBER|#))?$|^SKU$/i);
+  // Matches "CUSTOMER ITEM#" (WDS CSV col C) and "ASIN" (custpmatrix sheet)
+  const asinHeader = findHeader(/^CUSTOMER\s+ITEM#$|^ASIN$/i);
   const kitHeader = findHeader(/^KIT$/i);
   const diHeader = findHeader(/^DI$/i);
 
@@ -75,12 +86,10 @@ async function parseToPayload(
 
   // Pre-fetch all item codes and ASINs from the file
   const itemCodes = rows
-    .map((r) => (r[itemHeader] != null ? String(r[itemHeader]).trim() : ""))
+    .map((r) => cleanCell(r[itemHeader]))
     .filter(Boolean);
   const fileAsins = asinHeader
-    ? rows
-        .map((r) => (r[asinHeader] != null ? String(r[asinHeader]).trim() : ""))
-        .filter(Boolean)
+    ? rows.map((r) => cleanCell(r[asinHeader])).filter(Boolean)
     : [];
 
   const [existingSkus, asinOwners] = await Promise.all([
@@ -106,16 +115,16 @@ async function parseToPayload(
     const row = rows[i];
     const rowNum = i + 2;
 
-    const itemCode = row[itemHeader] != null ? String(row[itemHeader]).trim() : "";
+    const itemCode = cleanCell(row[itemHeader]);
     if (!itemCode) {
       errors.push({ rowNumber: rowNum, fieldName: "ITEM#", errorType: "invalid_value", message: "ITEM# is blank" });
       continue;
     }
 
-    const asin = asinHeader && row[asinHeader] != null ? String(row[asinHeader]).trim() : "";
-    const kitRaw = kitHeader && row[kitHeader] != null ? String(row[kitHeader]).trim() : "";
+    const asin = asinHeader ? cleanCell(row[asinHeader]) : "";
+    const kitRaw = kitHeader ? cleanCell(row[kitHeader]) : "";
     const isKit = kitRaw.length > 0 && TRUTHY.test(kitRaw);
-    const diRaw = diHeader && row[diHeader] != null ? String(row[diHeader]).trim() : "";
+    const diRaw = diHeader ? cleanCell(row[diHeader]) : "";
     const isDi = diRaw.length > 0 && TRUTHY.test(diRaw);
 
     // Resolve SKU — create placeholder if missing

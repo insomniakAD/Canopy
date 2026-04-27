@@ -31,7 +31,8 @@ datasource db {
 enum SkuStatus {
   active
   discontinued
-  seasonal
+  end_of_life   // WDS "Min=0" — flagged for sell-through
+  new_item      // WDS "New" — recently introduced
 }
 
 /// SKU tier — determines target inventory level and Amazon DOI targets
@@ -101,6 +102,7 @@ enum DataSource {
 
 /// Types of files that can be imported
 enum ImportType {
+  wds_active_items    // WDS Active Items report — bulk SKU catalog import (incl. kit parents)
   wds_inventory       // WDS inventory snapshot (ITEM#, ONHAND, IMPORT ON ORDER)
   wds_monthly_sales   // WDS monthly sales pivot (SKUs as rows, months as columns)
   amazon_sales        // Amazon Sales Diagnostic (Shipped Units by ASIN)
@@ -181,7 +183,11 @@ model Sku {
   fclQty40GP       Int?      @map("fcl_qty_40gp")             // Approx SKU units that fill one 40GP (factory quote)
   fclQty40HQ       Int?      @map("fcl_qty_40hq")             // Approx SKU units that fill one 40HQ (factory quote)
   moq              Int?                                       // Minimum order quantity
-  unitCostUsd      Decimal?  @map("unit_cost_usd")           // Current landed cost per unit
+  factoryCost      Decimal?  @map("factory_cost")             // Per-unit factory cost (FOB, before freight/duty)
+  basePrice        Decimal?  @map("base_price")               // Wholesale list price to customers (WDS Active Items col F)
+  replacementCost  Decimal?  @map("replacement_cost")         // Latest replacement cost — product + packaging only (WDS Active Items col G)
+  originCountry    Country?  @map("origin_country")           // Country of origin (interim until Vendors Setup links via Factory)
+  isAssembly       Boolean   @default(false) @map("is_assembly")  // WDS Active Items col A = "A" — assembled in-house
   defaultFactoryId String?   @map("default_factory_id") @db.Uuid  // Last factory used
 
   // V2 fields

@@ -10,14 +10,15 @@ type ImportTypeOption = {
 };
 
 const DEFAULT_IMPORT_TYPES: readonly ImportTypeOption[] = [
-  { value: "wds_inventory",         label: "WDS Inventory",              requires: [] },
-  { value: "wds_monthly_sales",     label: "WDS Monthly Sales",          requires: ["wds_inventory"] },
-  { value: "amazon_sales",          label: "Amazon Sales Diagnostic",    requires: ["wds_inventory"] },
-  { value: "amazon_vendor_central", label: "Amazon Vendor Central",      requires: ["wds_inventory"] },
-  { value: "amazon_forecast",       label: "Amazon Forecasting",         requires: ["wds_inventory"] },
-  { value: "purchase_orders",       label: "Purchase Orders",            requires: ["wds_inventory"] },
-  { value: "di_orders",             label: "Amazon DI Orders",           requires: ["wds_inventory"] },
-  { value: "item_update",           label: "Item Update",                requires: ["wds_inventory"] },
+  { value: "wds_active_items",      label: "WDS Active Items",           requires: [] },
+  { value: "wds_inventory",         label: "WDS Inventory",              requires: ["wds_active_items"] },
+  { value: "wds_monthly_sales",     label: "WDS Monthly Sales",          requires: ["wds_active_items"] },
+  { value: "amazon_sales",          label: "Amazon Sales Diagnostic",    requires: ["wds_active_items"] },
+  { value: "amazon_vendor_central", label: "Amazon Vendor Central",      requires: ["wds_active_items"] },
+  { value: "amazon_forecast",       label: "Amazon Forecasting",         requires: ["wds_active_items"] },
+  { value: "purchase_orders",       label: "Purchase Orders",            requires: ["wds_active_items"] },
+  { value: "di_orders",             label: "Amazon DI Orders",           requires: ["wds_active_items"] },
+  { value: "item_update",           label: "Item Update",                requires: ["wds_active_items"] },
 ] as const;
 
 function isTypeEnabled(t: ImportTypeOption, completedTypes: string[]): boolean {

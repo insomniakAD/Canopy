@@ -1,17 +1,22 @@
 // ============================================================================
 // Kit Composition — Staging-aware Processor
 // ============================================================================
-// Source: kititems.csv (positional columns B=PARENT#, F=CHILD#, H=QTY USED).
+// Source: WDS KITITEMS.txt — a fixed-width Oracle text report.
 // Replace-per-parent semantics: on commit the first row for each Parent deletes
 // existing KitComponent rows for that Parent, then all rows re-insert.
 //
-// Payload: parent→children map, ready for commit.
-// Diff: parents modified, component rows added vs removed.
+// Fixed-width layout (derived from the PARENT#/CHILD# header line):
+//   PARENT#  cols ~2-8   (only present on first row of each kit group)
+//   CHILD#   cols ~65-71 (present on every component row)
+//   QTY USED rightmost token on each data line
+//
+// The report paginates; each page repeats the DATE/PROG/USER/header block.
+// Non-data lines are identified by the absence of a numeric code in the
+// PARENT# or CHILD# column.
 // ============================================================================
 
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { ImportErrorDetail } from "../types";
-import { parseSpreadsheetRaw, toInt } from "../utils";
 import type {
   ProcessorInput,
   ProcessorStagingContract,
@@ -20,10 +25,6 @@ import type {
   DiffSummary,
   GateCheckResult,
 } from "../staging/types";
-
-const COL_PARENT = 1; // column B
-const COL_CHILD  = 5; // column F
-const COL_QTY    = 7; // column H
 
 // ---------- Payload shape ----------
 
@@ -37,6 +38,13 @@ export interface KitCompositionPayload {
   groups: StagedKitGroup[];
 }
 
+// Returns true for the "where used" section header (CHILD# appears before PARENT#).
+// This marks the boundary between section 1 (kit compositions) and section 2 (component usage).
+function isSection2Header(line: string): boolean {
+  if (!line.includes("CHILD#") || !line.includes("PARENT#")) return false;
+  return line.indexOf("CHILD#") < line.indexOf("PARENT#");
+}
+
 // ---------- parseToPayload ----------
 
 async function parseToPayload(
@@ -47,22 +55,50 @@ async function parseToPayload(
   const errors: ImportErrorDetail[] = [];
   const payload: KitCompositionPayload = { groups: [] };
 
-  const raw = parseSpreadsheetRaw(buffer);
-  if (raw.length <= 1) {
+  const lines = buffer.toString("utf8").split(/\r?\n/);
+
+  // Locate the PARENT#/CHILD# column header — use it to derive exact field positions.
+  // The report repeats this header on every page; only the first occurrence is needed.
+  let parentStart = -1;
+  let childStart = -1;
+  let dataStartIdx = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes("PARENT#") && lines[i].includes("CHILD#")) {
+      parentStart = lines[i].indexOf("PARENT#");
+      childStart = lines[i].indexOf("CHILD#");
+      // Data begins after the dash separator that immediately follows.
+      dataStartIdx = i + 1;
+      if (dataStartIdx < lines.length && /\s*-{5}/.test(lines[dataStartIdx])) {
+        dataStartIdx++;
+      }
+      break;
+    }
+  }
+
+  if (parentStart === -1 || dataStartIdx === -1) {
+    errors.push({
+      rowNumber: 1,
+      fieldName: "header",
+      errorType: "format_error",
+      message: 'Could not find "PARENT#" / "CHILD#" header. Expected WDS KITITEMS.txt report format.',
+    });
     return { payload, rowCount: 0, willImport: 0, willSkip: 0, errors };
   }
 
-  const dataRows = raw.slice(1);
-
-  // Collect all codes upfront
+  // First pass — collect all SKU codes for a single batch DB lookup.
+  // Stop at the section-2 boundary (header where CHILD# precedes PARENT#).
   const parentCodes = new Set<string>();
   const childCodes = new Set<string>();
-  for (const row of dataRows) {
-    if (!row || row.every((c) => c === null || c === "")) continue;
-    const p = row[COL_PARENT] != null ? String(row[COL_PARENT]).trim() : "";
-    const c = row[COL_CHILD] != null ? String(row[COL_CHILD]).trim() : "";
-    if (p) parentCodes.add(p);
-    if (c) childCodes.add(c);
+
+  for (let i = dataStartIdx; i < lines.length; i++) {
+    const line = lines[i];
+    if (isSection2Header(line)) break;
+    if (line.length <= childStart) continue;
+    const p = line.slice(parentStart, parentStart + 7).trim();
+    const c = line.slice(childStart, childStart + 7).trim();
+    if (p && /^\d+$/.test(p)) parentCodes.add(p);
+    if (c && /^\d+$/.test(c)) childCodes.add(c);
   }
 
   const allCodes = Array.from(new Set([...parentCodes, ...childCodes]));
@@ -72,10 +108,9 @@ async function parseToPayload(
         select: { id: true, skuCode: true, isKitParent: true, isKitComponent: true },
       })
     : [];
-
   const skuByCode = new Map(existingSkus.map((s) => [s.skuCode, s]));
 
-  // Auto-create missing SKUs
+  // Auto-create missing SKUs (e.g. components not yet in WDS Active Items).
   async function resolveSku(code: string) {
     const existing = skuByCode.get(code);
     if (existing) return existing;
@@ -87,53 +122,73 @@ async function parseToPayload(
     return created;
   }
 
-  // Build parent → children map
+  // Second pass — build the parent→children map.
   type GroupMap = Map<string, { parentId: string; children: { childId: string; childCode: string; qty: number }[] }>;
   const groupMap: GroupMap = new Map();
+  let currentParent = "";
+  let dataRowCount = 0;
 
-  for (let i = 0; i < dataRows.length; i++) {
-    const row = dataRows[i];
-    const rowNum = i + 2;
-    if (!row || row.every((c) => c === null || c === "")) continue;
+  for (let i = dataStartIdx; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim()) continue;
 
-    const parentCode = row[COL_PARENT] != null ? String(row[COL_PARENT]).trim() : "";
-    const childCode = row[COL_CHILD] != null ? String(row[COL_CHILD]).trim() : "";
-    const qtyRaw = row[COL_QTY];
+    // Section 2 starts when the header flips to CHILD# … PARENT#. Stop here.
+    if (isSection2Header(line)) break;
 
-    if (!parentCode) {
-      errors.push({ rowNumber: rowNum, fieldName: "PARENT#", errorType: "invalid_value", message: "PARENT# (column B) is blank" });
+    // Extract raw values from fixed-width positions.
+    const parentRaw = line.length > parentStart + 7 ? line.slice(parentStart, parentStart + 7).trim() : "";
+    const childRaw  = line.length > childStart  + 7 ? line.slice(childStart,  childStart  + 7).trim() : "";
+
+    // Non-numeric at parent/child position = page header repeat or blank — skip.
+    const parentIsCode = /^\d+$/.test(parentRaw);
+    const childIsCode  = /^\d+$/.test(childRaw);
+    if (!parentIsCode && !childIsCode) continue;
+
+    if (parentIsCode) currentParent = parentRaw;
+    if (!currentParent || !childIsCode) continue;
+
+    // QTY is always the rightmost token on the line.
+    const qtyStr = line.trimEnd().split(/\s+/).pop() ?? "";
+    const qty = parseInt(qtyStr, 10);
+    const rowNum = i + 1;
+    dataRowCount++;
+
+    if (!qty || qty <= 0) {
+      errors.push({
+        rowNumber: rowNum,
+        fieldName: "QTY USED",
+        errorType: "invalid_value",
+        message: `QTY USED must be a positive integer; got "${qtyStr}" (parent ${currentParent}, child ${childRaw})`,
+        rawValue: qtyStr,
+      });
       continue;
     }
-    if (!childCode) {
-      errors.push({ rowNumber: rowNum, fieldName: "CHILD#", errorType: "invalid_value", message: "CHILD# (column F) is blank", rawValue: parentCode });
-      continue;
-    }
-    if (parentCode === childCode) {
-      errors.push({ rowNumber: rowNum, fieldName: "PARENT#/CHILD#", errorType: "invalid_value", message: `Parent and Child are the same SKU ("${parentCode}") — a kit cannot contain itself`, rawValue: parentCode });
-      continue;
-    }
-
-    const qty = toInt(qtyRaw);
-    if (qty === null || qty <= 0) {
-      errors.push({ rowNumber: rowNum, fieldName: "QTY USED", errorType: "invalid_value", message: `QTY USED (column H) must be a positive integer; got "${qtyRaw ?? ""}"`, rawValue: qtyRaw != null ? String(qtyRaw) : "" });
+    if (currentParent === childRaw) {
+      errors.push({
+        rowNumber: rowNum,
+        fieldName: "PARENT#/CHILD#",
+        errorType: "invalid_value",
+        message: `Parent and Child are the same SKU ("${currentParent}") — a kit cannot contain itself`,
+        rawValue: currentParent,
+      });
       continue;
     }
 
-    const parent = await resolveSku(parentCode);
-    const child = await resolveSku(childCode);
+    const parent = await resolveSku(currentParent);
+    const child  = await resolveSku(childRaw);
 
     if (parent.isKitComponent) {
-      errors.push({ rowNumber: rowNum, fieldName: "PARENT#", errorType: "invalid_value", message: `SKU "${parentCode}" is already marked as a Kit Component and cannot also be a Kit Parent`, rawValue: parentCode });
+      errors.push({ rowNumber: rowNum, fieldName: "PARENT#", errorType: "invalid_value", message: `SKU "${currentParent}" is a Kit Component and cannot also be a Kit Parent`, rawValue: currentParent });
       continue;
     }
     if (child.isKitParent) {
-      errors.push({ rowNumber: rowNum, fieldName: "CHILD#", errorType: "invalid_value", message: `SKU "${childCode}" is already marked as a Kit Parent and cannot also be a Kit Component`, rawValue: childCode });
+      errors.push({ rowNumber: rowNum, fieldName: "CHILD#", errorType: "invalid_value", message: `SKU "${childRaw}" is a Kit Parent and cannot also be a Kit Component`, rawValue: childRaw });
       continue;
     }
 
-    const group = groupMap.get(parentCode) ?? { parentId: parent.id, children: [] };
-    group.children.push({ childId: child.id, childCode, qty });
-    groupMap.set(parentCode, group);
+    const group = groupMap.get(currentParent) ?? { parentId: parent.id, children: [] };
+    group.children.push({ childId: child.id, childCode: childRaw, qty });
+    groupMap.set(currentParent, group);
   }
 
   for (const [parentCode, group] of groupMap) {
@@ -149,7 +204,7 @@ async function parseToPayload(
   }
 
   const totalComponents = payload.groups.reduce((s, g) => s + g.children.length, 0);
-  return { payload, rowCount: dataRows.length, willImport: totalComponents, willSkip: 0, errors };
+  return { payload, rowCount: dataRowCount, willImport: totalComponents, willSkip: 0, errors };
 }
 
 // ---------- writeFromPayload ----------

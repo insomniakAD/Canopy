@@ -25,6 +25,15 @@ export default async function AdminUploadsPage() {
       <Card title="About These Files" className="mt-6">
         <div className="space-y-4 text-sm">
           <div>
+            <p className="font-medium text-[var(--c-text-primary)] mb-1">WDS Active Items</p>
+            <p className="text-[var(--c-text-secondary)]">
+              Seeds the SKU catalog from a raw WDS Active Items export (no reformatting).
+              Reads ITEM#, Country of Origin, Status, Description, Base Price, and Latest/Repl Cost.
+              Imports both standalone items and kit parents (rows after the &quot;KIT PARENT ITEMS:&quot; divider).
+              This is the first upload — every other report depends on it.
+            </p>
+          </div>
+          <div>
             <p className="font-medium text-[var(--c-text-primary)] mb-1">Item Update</p>
             <p className="text-[var(--c-text-secondary)]">
               Bulk-update SKU attributes (vendor, FCL, MOQ, unit cost, ASIN, kit parent flag, tier override).

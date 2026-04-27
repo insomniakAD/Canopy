@@ -35,7 +35,7 @@ async function loadReportData() {
     const recs = await db.reorderRecommendation.findMany({
       where: { isCurrent: true },
       include: {
-        sku: { select: { skuCode: true, name: true, tier: true, unitCostUsd: true } },
+        sku: { select: { skuCode: true, name: true, tier: true, factoryCost: true } },
         recommendedFactory: { select: { name: true, country: true } },
       },
       orderBy: { weeksOfSupply: "asc" },
@@ -65,7 +65,7 @@ async function loadReportData() {
 
     // Inventory exposure — how much $ is tied up in order recs
     const totalOrderCost = orderRecs.reduce((s, r) => {
-      const unitCost = r.sku.unitCostUsd ? Number(r.sku.unitCostUsd) : 0;
+      const unitCost = r.sku.factoryCost ? Number(r.sku.factoryCost) : 0;
       return s + r.adjustedQuantity * unitCost;
     }, 0);
 
@@ -91,7 +91,7 @@ async function loadReportData() {
       entry.skus++;
       entry.units += r.adjustedQuantity;
       entry.fractionHQ += r.fclFractionHQ ? Number(r.fclFractionHQ) : 0;
-      entry.cost += r.adjustedQuantity * (r.sku.unitCostUsd ? Number(r.sku.unitCostUsd) : 0);
+      entry.cost += r.adjustedQuantity * (r.sku.factoryCost ? Number(r.sku.factoryCost) : 0);
       byCountry.set(country, entry);
     }
 
