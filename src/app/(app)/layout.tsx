@@ -1,4 +1,5 @@
 import { Sidebar } from "@/components/sidebar";
+import { Topbar } from "@/components/topbar";
 import { AuthProvider } from "@/components/session-provider";
 
 export default function AppLayout({
@@ -10,7 +11,9 @@ export default function AppLayout({
     <AuthProvider>
       <div className="flex min-h-screen">
         <Sidebar />
-        <main className="flex-1 ml-56 p-8 overflow-auto">
+        <Topbar />
+        {/* pt accounts for fixed 56px topbar; px/pb match the old p-8 */}
+        <main className="flex-1 ml-60 px-8 pb-8 pt-[calc(3.5rem+2rem)] overflow-auto">
           {children}
         </main>
       </div>
