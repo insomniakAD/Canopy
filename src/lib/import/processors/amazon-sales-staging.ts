@@ -100,14 +100,21 @@ async function parseToPayload(
       continue;
     }
 
-    const shippedUnits = toInt(row["Shipped Units"]);
+    const rawUnits = row["Shipped Units"];
+    // Blank cell = no sales reported for this ASIN; treat as 0 and skip.
+    if (rawUnits === null || rawUnits === undefined || rawUnits === "") {
+      willSkip++;
+      continue;
+    }
+
+    const shippedUnits = toInt(rawUnits);
     if (shippedUnits === null || shippedUnits < 0) {
       errors.push({
         rowNumber: rowNum,
         fieldName: "Shipped Units",
         errorType: "invalid_value",
-        message: `Shipped Units "${row["Shipped Units"]}" is not a valid number`,
-        rawValue: String(row["Shipped Units"] ?? ""),
+        message: `Shipped Units "${rawUnits}" is not a valid number`,
+        rawValue: String(rawUnits),
       });
       continue;
     }

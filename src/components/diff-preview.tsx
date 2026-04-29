@@ -205,6 +205,48 @@ function TopDeltasTable({ rows }: { rows: RowDelta[] }) {
   );
 }
 
+// ---- CSV export ----
+
+function csvCell(value: string | number | null | undefined): string {
+  const s = value == null ? "" : String(value);
+  // Wrap in quotes if the value contains commas, quotes, or newlines
+  if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function buildExportCsv(result: StagedUploadResult): string {
+  const { gates, diff, errors } = result;
+  const allWarnings = [...gates.softFails, ...(diff?.warnings ?? [])];
+
+  const header = ["Type", "Row", "Field", "Code", "Message", "Raw Value"];
+  const rows: string[][] = [];
+
+  for (const g of gates.hardFails) {
+    rows.push(["Block", "", "", g.code, g.message, ""]);
+  }
+  for (const w of allWarnings) {
+    rows.push(["Warning", "", "", w.code, w.message, ""]);
+  }
+  for (const e of errors) {
+    rows.push(["Error", String(e.row), e.field ?? "", e.type, e.message, e.value ?? ""]);
+  }
+
+  const lines = [header, ...rows].map((row) => row.map(csvCell).join(","));
+  return lines.join("\r\n");
+}
+
+function downloadCsv(csv: string, fileName: string) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ---- Main component ----
 
 interface DiffPreviewProps {
@@ -219,6 +261,14 @@ export function DiffPreview({ result, onCommit, onCancel, committing, cancelling
   const { summary, gates, diff, errors, blocked } = result;
   const hasSoftWarnings = gates.softFails.length > 0 || (diff?.warnings ?? []).length > 0;
   const allWarnings = [...gates.softFails, ...(diff?.warnings ?? [])];
+  const hasLog = gates.hardFails.length > 0 || allWarnings.length > 0 || errors.length > 0;
+
+  const handleExport = () => {
+    const csv = buildExportCsv(result);
+    const base = result.fileName.replace(/\.[^.]+$/, "");
+    const date = new Date().toISOString().slice(0, 10);
+    downloadCsv(csv, `import-log-${base}-${date}.csv`);
+  };
 
   return (
     <div className="mt-4 border border-[var(--c-border)] rounded-xl overflow-hidden">
@@ -236,6 +286,17 @@ export function DiffPreview({ result, onCommit, onCancel, committing, cancelling
             {summary.errorCount > 0 && ` · ${summary.errorCount} parse errors`}
           </p>
         </div>
+        {hasLog && (
+          <button
+            onClick={handleExport}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[var(--c-text-secondary)] border border-[var(--c-border)] rounded-lg hover:text-[var(--c-text-primary)] hover:border-[var(--c-text-tertiary)] transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Export Log
+          </button>
+        )}
       </div>
 
       <div className="px-5 py-4 space-y-5 bg-[var(--c-page-bg)]">

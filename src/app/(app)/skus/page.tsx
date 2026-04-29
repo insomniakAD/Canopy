@@ -4,6 +4,31 @@ import { SkuTable } from "./sku-table";
 import { RunEngineButton } from "@/components/run-engine-button";
 import { TransitionsTable, type TransitionRow } from "./transitions-table";
 
+const REQUIRED_IMPORT_TYPES = [
+  "wds_inventory",
+  "wds_monthly_sales",
+  "wds_monthly_cartons",
+  "amazon_sales",
+  "amazon_vendor_central",
+  "amazon_forecast",
+  "purchase_orders",
+  "di_orders",
+] as const;
+
+async function loadMissingReports(): Promise<string[]> {
+  try {
+    const rows = await db.importBatch.groupBy({
+      by: ["importType"],
+      where: { status: "completed", importType: { in: [...REQUIRED_IMPORT_TYPES] } },
+      _max: { createdAt: true },
+    });
+    const completed = new Set(rows.map((r) => r.importType));
+    return REQUIRED_IMPORT_TYPES.filter((t) => !completed.has(t));
+  } catch {
+    return [];
+  }
+}
+
 async function loadPendingTransitions() {
   try {
     const rows = await db.pendingVendorTransition.findMany({
@@ -81,9 +106,10 @@ async function loadRecommendations() {
 }
 
 export default async function SkuPlanningPage() {
-  const [data, transitions] = await Promise.all([
+  const [data, transitions, missingReports] = await Promise.all([
     loadRecommendations(),
     loadPendingTransitions(),
+    loadMissingReports(),
   ]);
 
   if (!data.ok) {
@@ -114,7 +140,7 @@ export default async function SkuPlanningPage() {
               : "No recommendations generated yet"}
           </p>
         </div>
-        <RunEngineButton />
+        <RunEngineButton missingReports={missingReports} />
       </div>
 
       {/* Summary */}

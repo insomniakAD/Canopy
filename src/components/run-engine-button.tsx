@@ -3,6 +3,17 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+const REPORT_LABELS: Record<string, string> = {
+  wds_inventory: "WDS Inventory",
+  wds_monthly_sales: "WDS Monthly Sales — Revenue",
+  wds_monthly_cartons: "WDS Monthly Sales — Cartons",
+  amazon_sales: "Amazon Sales Diagnostic",
+  amazon_vendor_central: "Amazon Vendor Central",
+  amazon_forecast: "Amazon Forecasting",
+  purchase_orders: "Purchase Orders",
+  di_orders: "Amazon DI Orders",
+};
+
 interface RunResult {
   success: boolean;
   summary?: {
@@ -16,11 +27,12 @@ interface RunResult {
   error?: string;
 }
 
-export function RunEngineButton() {
+export function RunEngineButton({ missingReports = [] }: { missingReports?: string[] }) {
   const [running, setRunning] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
   const router = useRouter();
+  const isBlocked = missingReports.length > 0;
 
   const handleRun = async () => {
     setConfirming(false);
@@ -48,11 +60,21 @@ export function RunEngineButton() {
     <div className="relative">
       <button
         onClick={() => setConfirming(true)}
-        disabled={running}
+        disabled={running || isBlocked}
         className="px-5 py-2.5 bg-[var(--c-accent)] text-white text-sm font-medium rounded-lg hover:bg-[var(--c-accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {running ? "Running Engine\u2026" : "Run Recommendations"}
       </button>
+
+      {isBlocked && (
+        <div className="mt-2 text-xs text-[var(--c-text-secondary)] max-w-xs">
+          <span className="font-medium text-[var(--c-warning-text)]">Missing data \u2014</span>{" "}
+          upload these on the{" "}
+          <a href="/import" className="text-[var(--c-accent)] hover:underline">Import Data</a>{" "}
+          page first:{" "}
+          {missingReports.map((r) => REPORT_LABELS[r] ?? r).join(", ")}.
+        </div>
+      )}
 
       {confirming && (
         <div className="absolute right-0 top-12 z-20 w-80 bg-[var(--c-card-bg)] border border-[var(--c-border)] rounded-xl shadow-lg px-5 py-4">

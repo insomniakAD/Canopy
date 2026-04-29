@@ -102,17 +102,18 @@ enum DataSource {
 
 /// Types of files that can be imported
 enum ImportType {
-  wds_active_items    // WDS Active Items report — bulk SKU catalog import (incl. kit parents)
-  wds_inventory       // WDS inventory snapshot (ITEM#, ONHAND, IMPORT ON ORDER)
-  wds_monthly_sales   // WDS monthly sales pivot (SKUs as rows, months as columns)
-  amazon_sales        // Amazon Sales Diagnostic (Shipped Units by ASIN)
+  wds_active_items      // WDS Active Items report — bulk SKU catalog import (incl. kit parents)
+  wds_inventory         // WDS inventory snapshot (ITEM#, ONHAND, IMPORT ON ORDER)
+  wds_monthly_sales     // WDS monthly sales pivot — Sales Dollars (revenue per SKU per month)
+  wds_monthly_cartons   // WDS monthly sales pivot — Cartons/Units shipped per SKU per month
+  amazon_sales          // Amazon Sales Diagnostic (Shipped Units by ASIN)
   amazon_vendor_central // Amazon Vendor Central operational report (inventory, OOS%, etc.)
-  amazon_forecast     // Amazon Mean Forecast (48-week forward forecast by ASIN)
-  purchase_orders     // Open POs from WDS
-  asin_mapping        // One-time or update: links ASINs to Winsome SKU codes
-  di_orders           // Amazon Direct Import POs (factory ships direct to Amazon)
-  kit_composition     // Kit bill-of-materials: Parent SKU + Child SKUs + qty per kit
-  item_update         // Item Update: SKU attribute changes + Vendors sheet + Kits sheet
+  amazon_forecast       // Amazon Mean Forecast (48-week forward forecast by ASIN)
+  purchase_orders       // Open POs from WDS
+  asin_mapping          // One-time or update: links ASINs to Winsome SKU codes
+  di_orders             // Amazon Direct Import POs (factory ships direct to Amazon)
+  kit_composition       // Kit bill-of-materials: Parent SKU + Child SKUs + qty per kit
+  item_update           // Item Update: SKU attribute changes + Vendors sheet + Kits sheet
 }
 
 /// Status of an import batch
@@ -121,6 +122,14 @@ enum ImportStatus {
   processing
   completed
   failed
+}
+
+/// Lifecycle of a single pull from Golf's Vercel Blob storage.
+enum BlobSyncStatus {
+  preview     // Downloaded and previewed, awaiting user commit
+  applied     // User approved — rows written via the import pipeline
+  cancelled   // User discarded the preview
+  failed      // Pull or processing errored before reaching the user
 }
 
 /// Two-phase import lifecycle for pre-commit diff preview (Layer 3).
@@ -884,4 +893,27 @@ model SystemSetting {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("system_settings")
+}
+
+// ============================================================================
+// BLOB SYNC — Pulls from Golf's Vercel Blob storage
+// ============================================================================
+
+/// Audit log for every pull from Golf's Vercel Blob storage.
+/// One row per pull attempt (preview / applied / cancelled / failed).
+/// Lets the admin sync page show "last successful sync N hours ago" per file.
+model BlobSync {
+  id            String         @id @default(uuid()) @db.Uuid
+  pathname      String                                              // Blob filename, e.g. "oitem-monthly.json"
+  pulledAt      DateTime       @map("pulled_at")
+  rowCount      Int            @default(0) @map("row_count")        // Rows seen in the source file
+  importedCount Int            @default(0) @map("imported_count")   // Rows actually written after diff/apply
+  status        BlobSyncStatus
+  errorMessage  String?        @map("error_message")
+  importBatchId String?        @map("import_batch_id") @db.Uuid     // Link to the ImportBatch this pull produced
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([pathname, pulledAt])
+  @@map("blob_syncs")
 }

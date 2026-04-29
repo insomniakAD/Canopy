@@ -1,11 +1,16 @@
 // ============================================================================
-// WDS Monthly Sales — Staging-aware Processor
+// WDS Monthly Sales — Staging-aware Processor (Cartons + Revenue)
 // ============================================================================
-// Canonical example of the two-phase (stage → commit) contract. The parse
-// phase resolves every SKU upfront so commit becomes a simple upsert loop.
+// Handles two import types that share the same WDS monthly pivot format:
+//   wds_monthly_cartons  → writes quantity (integer cartons/units shipped)
+//   wds_monthly_sales    → writes revenueUsd (decimal sales dollars)
 //
-// Payload is an array of normalized (SKU × month) sales rows, one per cell
-// that had a non-zero unit count.
+// Both reports have a metadata row 0 (e.g. "MONTH VALUES = CARTONS") and
+// actual column headers in row 1. The orchestrator sets headerRow=1 for both.
+//
+// The core logic — value coercion, SKU lookup, payload assembly, write,
+// and diff — is exported so the Vercel Blob source path (oitem-monthly.json,
+// already unpivoted) can reuse it without going through the Excel parser.
 // ============================================================================
 
 import type { PrismaClient } from "@/generated/prisma/client";
@@ -22,21 +27,44 @@ import type {
   RowDelta,
 } from "../staging/types";
 
-// ---------- Payload shape ----------
+// ---------- Types ----------
+
+export type Mode = "cartons" | "revenue";
 
 interface StagedSalesRow {
-  skuId: string;        // resolved during parse
-  skuCode: string;      // for display in diff/errors
-  saleDate: string;     // ISO date
+  skuId: string;
+  skuCode: string;
+  saleDate: string;
   periodStartDate: string;
   periodEndDate: string;
-  /** Label used for period-level roll-ups. e.g. "Mar 2025". */
   periodLabel: string;
-  quantity: number;
+  /** Cartons mode: integer unit count. Revenue mode: dollar amount (float). */
+  value: number;
 }
 
 export interface WdsMonthlySalesPayload {
+  mode: Mode;
   rows: StagedSalesRow[];
+}
+
+/**
+ * One value to consider for the staging payload — already resolved to a SKU
+ * code and a calendar period. The Excel parser produces these from
+ * (row × month-column) pairs; the JSON blob source produces them directly
+ * from each `oitem-monthly` record.
+ */
+export interface SalesInputItem {
+  skuCode: string;
+  periodStartDate: Date;
+  periodEndDate: Date;
+  /** Defaults to periodStartDate if omitted. */
+  saleDate?: Date;
+  periodLabel: string;
+  rawValue: unknown;
+  /** 1-indexed source row number (used in error messages). */
+  rowNumber: number;
+  /** Source field/column name (used in error messages). */
+  fieldName: string;
 }
 
 // ---------- Helpers ----------
@@ -45,24 +73,131 @@ function monthLabel(date: Date): string {
   return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
 }
 
-// ---------- parseToPayload ----------
+function parseValue(raw: unknown, mode: Mode): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+
+  if (mode === "cartons") {
+    const v = toInt(raw);
+    return v !== null && v >= 0 ? v : null;
+  }
+
+  // Revenue: strip commas, parse as float
+  const s = String(raw).replace(/,/g, "");
+  const v = parseFloat(s);
+  return !isNaN(v) && v >= 0 ? v : null;
+}
+
+/** One-shot lookup of SKU codes → ids. Empty input returns an empty map. */
+export async function fetchSkuIdMap(
+  db: PrismaClient,
+  codes: string[],
+): Promise<Map<string, string>> {
+  const unique = Array.from(new Set(codes.filter(Boolean)));
+  if (unique.length === 0) return new Map();
+  const records = await db.sku.findMany({
+    where: { skuCode: { in: unique } },
+    select: { id: true, skuCode: true },
+  });
+  return new Map(records.map((s) => [s.skuCode, s.id]));
+}
+
+/**
+ * Shared engine: given pre-resolved sales inputs and a SKU map, validate +
+ * coerce each value and assemble the staging payload. Caller is responsible
+ * for blank-SKU and missing-SKU handling (so per-row error counts can be
+ * controlled at the source).
+ *
+ * Returns a `produced` flag per input so the caller can attribute outputs
+ * back to its own row grouping.
+ */
+export async function buildSalesPayload(
+  inputs: SalesInputItem[],
+  mode: Mode,
+  skuByCode: Map<string, string>,
+): Promise<{
+  payload: WdsMonthlySalesPayload;
+  errors: ImportErrorDetail[];
+  produced: boolean[];
+}> {
+  const errors: ImportErrorDetail[] = [];
+  const payload: WdsMonthlySalesPayload = { mode, rows: [] };
+  const produced = new Array<boolean>(inputs.length).fill(false);
+
+  for (let idx = 0; idx < inputs.length; idx++) {
+    const input = inputs[idx];
+
+    const skuId = skuByCode.get(input.skuCode);
+    if (!skuId) {
+      // Defensive — caller should have filtered, but if it didn't, surface.
+      errors.push({
+        rowNumber: input.rowNumber,
+        fieldName: input.fieldName,
+        errorType: "missing_sku",
+        message:
+          `SKU "${input.skuCode}" not found. Import WDS Inventory first so SKUs exist.`,
+        rawValue: input.skuCode,
+      });
+      continue;
+    }
+
+    if (
+      input.rawValue === null ||
+      input.rawValue === undefined ||
+      input.rawValue === ""
+    ) {
+      continue;
+    }
+
+    const value = parseValue(input.rawValue, mode);
+    if (value === null) {
+      errors.push({
+        rowNumber: input.rowNumber,
+        fieldName: input.fieldName,
+        errorType: "invalid_value",
+        message:
+          `Value "${input.rawValue}" is not a valid ${mode === "cartons" ? "unit count" : "dollar amount"}`,
+        rawValue: String(input.rawValue),
+      });
+      continue;
+    }
+
+    if (value === 0) continue;
+
+    const start = input.periodStartDate;
+    const end = input.periodEndDate;
+    const sale = input.saleDate ?? start;
+    payload.rows.push({
+      skuId,
+      skuCode: input.skuCode,
+      saleDate: sale.toISOString(),
+      periodStartDate: start.toISOString(),
+      periodEndDate: end.toISOString(),
+      periodLabel: input.periodLabel,
+      value,
+    });
+    produced[idx] = true;
+  }
+
+  return { payload, errors, produced };
+}
+
+// ---------- parseToPayload (Excel pivot path) ----------
 
 async function parseToPayload(
   db: PrismaClient,
-  input: ProcessorInput
+  input: ProcessorInput,
+  mode: Mode,
 ): Promise<ParseResult<WdsMonthlySalesPayload>> {
   const { headers, rows } = input;
   const errors: ImportErrorDetail[] = [];
-  const payload: WdsMonthlySalesPayload = { rows: [] };
-  let willSkip = 0;
 
   // ---- Identify columns ----
-  const skuHeader = headers.find((h) => /^ITEM\s*#?$|^SKU$|^ITEM\s*NO/i.test(h)) ?? headers[0];
-  const typeHeader = headers.find((h) => /^TYPE$|^FLAG$|^KIT$|^KIND$/i.test(h)) ?? null;
+  const skuHeader =
+    headers.find((h) => /^ITEM\s*#?$|^SKU$|^ITEM\s*NO/i.test(h)) ?? headers[0];
 
   const monthColumns: { header: string; start: Date; end: Date; label: string }[] = [];
   for (const h of headers) {
-    if (h === skuHeader || h === typeHeader) continue;
+    if (h === skuHeader) continue;
     const parsed = parseMonthColumn(h);
     if (parsed) {
       monthColumns.push({ header: h, ...parsed, label: monthLabel(parsed.start) });
@@ -75,25 +210,30 @@ async function parseToPayload(
       fieldName: "headers",
       errorType: "format_error",
       message:
-        `No month columns found. Expected formats like "Apr-25", "2025-04". ` +
-        `Headers: ${headers.slice(0, 10).join(", ")}`,
+        `No month columns found. Expected formats like "Apr-25", "APR 2025", "2025-04". ` +
+        `Headers seen: ${headers.slice(0, 10).join(", ")}`,
     });
-    return { payload, rowCount: rows.length, willImport: 0, willSkip: 0, errors };
+    return {
+      payload: { mode, rows: [] },
+      rowCount: rows.length,
+      willImport: 0,
+      willSkip: 0,
+      errors,
+    };
   }
 
-  // ---- Pre-fetch SKUs in one query to avoid N+1 ----
+  // ---- Pre-fetch SKUs once ----
   const codes = rows
     .map((row) => (row[skuHeader] != null ? String(row[skuHeader]).trim() : ""))
     .filter(Boolean);
-  const skuRecords = codes.length
-    ? await db.sku.findMany({
-        where: { skuCode: { in: codes } },
-        select: { id: true, skuCode: true },
-      })
-    : [];
-  const skuByCode = new Map(skuRecords.map((s) => [s.skuCode, s.id]));
+  const skuByCode = await fetchSkuIdMap(db, codes);
 
-  // ---- Per-row processing ----
+  // ---- Build inputs from non-blank cells; track row → input mapping ----
+  const inputs: SalesInputItem[] = [];
+  const inputRowIdx: number[] = [];
+  /** Excel rows that survived blank-SKU + missing-SKU checks. */
+  const validSkuRows = new Set<number>();
+
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const rowNum = i + 2;
@@ -109,73 +249,53 @@ async function parseToPayload(
       continue;
     }
 
-    // ---- Type flag handling ----
-    let typeFlag = "";
-    if (typeHeader) {
-      typeFlag = row[typeHeader] != null ? String(row[typeHeader]).trim() : "";
-    } else {
-      for (const h of headers) {
-        if (h === skuHeader) continue;
-        if (monthColumns.some((m) => m.header === h)) continue;
-        const v = row[h];
-        if (v == null) continue;
-        const s = String(v).trim();
-        if (s.length === 1 && /^[KcA]$/.test(s)) {
-          typeFlag = s;
-          break;
-        }
-      }
-    }
-
-    if (typeFlag === "A") {
-      willSkip++;
-      continue;
-    }
-
-    const skuId = skuByCode.get(itemCode);
-    if (!skuId) {
+    if (!skuByCode.has(itemCode)) {
       errors.push({
         rowNumber: rowNum,
         fieldName: skuHeader,
         errorType: "missing_sku",
-        message:
-          `SKU "${itemCode}" not found. Import WDS Inventory (STKSTATUS.txt) ` +
-          `and Kit Composition (kititems.csv) first so SKUs exist.`,
+        message: `SKU "${itemCode}" not found. Import WDS Inventory first so SKUs exist.`,
         rawValue: itemCode,
       });
       continue;
     }
 
-    let wroteAny = false;
+    validSkuRows.add(i);
+
     for (const mc of monthColumns) {
       const raw = row[mc.header];
-      if (raw === null || raw === undefined || raw === "" || raw === 0 || raw === "0") continue;
-
-      const units = toInt(raw);
-      if (units === null || units < 0) {
-        errors.push({
-          rowNumber: rowNum,
-          fieldName: mc.header,
-          errorType: "invalid_value",
-          message: `Value "${raw}" in ${mc.header} is not a valid unit count`,
-          rawValue: String(raw),
-        });
-        continue;
-      }
-
-      payload.rows.push({
-        skuId,
+      if (raw === null || raw === undefined || raw === "") continue;
+      inputs.push({
         skuCode: itemCode,
-        saleDate: mc.start.toISOString(),
-        periodStartDate: mc.start.toISOString(),
-        periodEndDate: mc.end.toISOString(),
+        periodStartDate: mc.start,
+        periodEndDate: mc.end,
+        saleDate: mc.start,
         periodLabel: mc.label,
-        quantity: units,
+        rawValue: raw,
+        rowNumber: rowNum,
+        fieldName: mc.header,
       });
-      wroteAny = true;
+      inputRowIdx.push(i);
     }
+  }
 
-    if (!wroteAny) willSkip++;
+  // ---- Hand off to shared engine ----
+  const { payload, errors: builderErrors, produced } = await buildSalesPayload(
+    inputs,
+    mode,
+    skuByCode,
+  );
+  errors.push(...builderErrors);
+
+  // willSkip: rows with valid SKU that produced no output
+  // (no months populated, or all months were blank/zero/invalid).
+  const producedRows = new Set<number>();
+  for (let k = 0; k < produced.length; k++) {
+    if (produced[k]) producedRows.add(inputRowIdx[k]);
+  }
+  let willSkip = 0;
+  for (const i of validSkuRows) {
+    if (!producedRows.has(i)) willSkip++;
   }
 
   return {
@@ -192,35 +312,61 @@ async function parseToPayload(
 async function writeFromPayload(
   db: PrismaClient,
   batchId: string,
-  payload: WdsMonthlySalesPayload
+  payload: WdsMonthlySalesPayload,
 ): Promise<WriteResult> {
+  const { mode, rows } = payload;
   let imported = 0;
+
   await db.$transaction(async (tx) => {
-    for (const row of payload.rows) {
-      await tx.salesRecord.upsert({
-        where: {
-          unique_sales_period: {
-            skuId: row.skuId,
-            channel: "domestic",
-            periodStartDate: new Date(row.periodStartDate),
-            periodEndDate: new Date(row.periodEndDate),
-          },
-        },
-        update: { quantity: row.quantity, importBatchId: batchId },
-        create: {
+    for (const row of rows) {
+      const where = {
+        unique_sales_period: {
           skuId: row.skuId,
           channel: "domestic",
-          saleDate: new Date(row.saleDate),
           periodStartDate: new Date(row.periodStartDate),
           periodEndDate: new Date(row.periodEndDate),
-          quantity: row.quantity,
-          source: "wds_export",
-          importBatchId: batchId,
         },
-      });
+      } as const;
+
+      if (mode === "cartons") {
+        const qty = Math.round(row.value);
+        await tx.salesRecord.upsert({
+          where,
+          update: { quantity: qty, importBatchId: batchId },
+          create: {
+            skuId: row.skuId,
+            channel: "domestic",
+            saleDate: new Date(row.saleDate),
+            periodStartDate: new Date(row.periodStartDate),
+            periodEndDate: new Date(row.periodEndDate),
+            quantity: qty,
+            source: "wds_export",
+            importBatchId: batchId,
+          },
+        });
+      } else {
+        // Revenue mode — only update revenueUsd; quantity defaults to 0 on create
+        await tx.salesRecord.upsert({
+          where,
+          update: { revenueUsd: row.value, importBatchId: batchId },
+          create: {
+            skuId: row.skuId,
+            channel: "domestic",
+            saleDate: new Date(row.saleDate),
+            periodStartDate: new Date(row.periodStartDate),
+            periodEndDate: new Date(row.periodEndDate),
+            quantity: 0,
+            revenueUsd: row.value,
+            source: "wds_export",
+            importBatchId: batchId,
+          },
+        });
+      }
+
       imported++;
     }
-  }, { timeout: 30000 });
+  }, { timeout: 120000 });
+
   return { rowsImported: imported, rowsSkipped: 0 };
 }
 
@@ -228,21 +374,16 @@ async function writeFromPayload(
 
 async function computeDiff(
   db: PrismaClient,
-  payload: WdsMonthlySalesPayload
+  payload: WdsMonthlySalesPayload,
 ): Promise<DiffSummary> {
-  if (payload.rows.length === 0) {
-    return {
-      totalStagedRows: 0,
-      newRows: 0,
-      updatedRows: 0,
-      unchangedRows: 0,
-      warnings: [],
-    };
+  const { mode, rows } = payload;
+
+  if (rows.length === 0) {
+    return { totalStagedRows: 0, newRows: 0, updatedRows: 0, unchangedRows: 0, warnings: [] };
   }
 
-  // ---- Fetch existing SalesRecords that overlap our staged rows ----
-  const skuIds = Array.from(new Set(payload.rows.map((r) => r.skuId)));
-  const periodStarts = Array.from(new Set(payload.rows.map((r) => r.periodStartDate)));
+  const skuIds = Array.from(new Set(rows.map((r) => r.skuId)));
+  const periodStarts = Array.from(new Set(rows.map((r) => r.periodStartDate)));
 
   const existing = await db.salesRecord.findMany({
     where: {
@@ -255,46 +396,50 @@ async function computeDiff(
       periodStartDate: true,
       periodEndDate: true,
       quantity: true,
+      revenueUsd: true,
     },
   });
 
   const existingKey = (skuId: string, startIso: string, endIso: string) =>
     `${skuId}|${startIso}|${endIso}`;
-  const existingMap = new Map<string, number>();
+
+  // Map existing records keyed → current value for the relevant field
+  const existingMap = new Map<string, number | null>();
   for (const e of existing) {
+    const val =
+      mode === "cartons"
+        ? e.quantity
+        : e.revenueUsd != null
+        ? Number(e.revenueUsd)
+        : null;
     existingMap.set(
       existingKey(e.skuId, e.periodStartDate.toISOString(), e.periodEndDate.toISOString()),
-      e.quantity
+      val,
     );
   }
 
-  // ---- Bucket diffs per period + collect row-level deltas ----
   let newRows = 0;
   let updatedRows = 0;
   let unchangedRows = 0;
 
-  const periodAgg = new Map<
-    string,
-    { period: string; previousTotal: number; newTotal: number }
-  >();
-  const perPeriodOrder: string[] = []; // preserve first-seen order
-
+  const periodAgg = new Map<string, { period: string; previousTotal: number; newTotal: number }>();
+  const perPeriodOrder: string[] = [];
   const rowDeltas: RowDelta[] = [];
 
-  for (const row of payload.rows) {
+  for (const row of rows) {
     const key = existingKey(row.skuId, row.periodStartDate, row.periodEndDate);
     const prior = existingMap.get(key);
 
-    if (prior === undefined) {
+    if (prior === undefined || prior === null) {
       newRows++;
       rowDeltas.push({
         skuCode: row.skuCode,
         period: row.periodLabel,
         previous: null,
-        next: row.quantity,
-        delta: row.quantity,
+        next: row.value,
+        delta: row.value,
       });
-    } else if (prior === row.quantity) {
+    } else if (prior === row.value) {
       unchangedRows++;
     } else {
       updatedRows++;
@@ -302,22 +447,17 @@ async function computeDiff(
         skuCode: row.skuCode,
         period: row.periodLabel,
         previous: prior,
-        next: row.quantity,
-        delta: row.quantity - prior,
+        next: row.value,
+        delta: row.value - prior,
       });
     }
 
-    // Period roll-up
     if (!periodAgg.has(row.periodLabel)) {
-      periodAgg.set(row.periodLabel, {
-        period: row.periodLabel,
-        previousTotal: 0,
-        newTotal: 0,
-      });
+      periodAgg.set(row.periodLabel, { period: row.periodLabel, previousTotal: 0, newTotal: 0 });
       perPeriodOrder.push(row.periodLabel);
     }
     const bucket = periodAgg.get(row.periodLabel)!;
-    bucket.newTotal += row.quantity;
+    bucket.newTotal += row.value;
     bucket.previousTotal += prior ?? 0;
   }
 
@@ -325,21 +465,11 @@ async function computeDiff(
     const b = periodAgg.get(label)!;
     const delta = b.newTotal - b.previousTotal;
     const deltaPct = b.previousTotal === 0 ? null : (delta / b.previousTotal) * 100;
-    return {
-      period: label,
-      previousTotal: b.previousTotal,
-      newTotal: b.newTotal,
-      delta,
-      deltaPct,
-    };
+    return { period: label, previousTotal: b.previousTotal, newTotal: b.newTotal, delta, deltaPct };
   });
 
-  // Top deltas: by absolute delta, cap at 20
-  const topDeltas = [...rowDeltas]
-    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-    .slice(0, 20);
+  const topDeltas = [...rowDeltas].sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 20);
 
-  // Period-total soft warnings (>50% swing)
   const warnings: GateCheckResult["softFails"] = [];
   for (const pt of periodTotals) {
     if (pt.deltaPct !== null && Math.abs(pt.deltaPct) >= 50 && pt.previousTotal > 0) {
@@ -350,31 +480,28 @@ async function computeDiff(
     }
   }
 
+  return { totalStagedRows: rows.length, newRows, updatedRows, unchangedRows, periodTotals, topDeltas, warnings };
+}
+
+// ---------- Factory + exports ----------
+
+function createProcessor(mode: Mode): ProcessorStagingContract<WdsMonthlySalesPayload> {
   return {
-    totalStagedRows: payload.rows.length,
-    newRows,
-    updatedRows,
-    unchangedRows,
-    periodTotals,
-    topDeltas,
-    warnings,
+    parseToPayload: (db, input) => parseToPayload(db, input, mode),
+    writeFromPayload,
+    computeDiff,
+    runGates: async (): Promise<GateCheckResult> => ({ hardFails: [], softFails: [] }),
   };
 }
 
-// ---------- runGates (processor-specific) ----------
+/** wds_monthly_sales import type — Sales Dollars (revenue per SKU per month). */
+export const wdsMonthlySalesStaging = createProcessor("revenue");
 
-async function runGates(): Promise<GateCheckResult> {
-  // Hard/soft gates specific to WDS Monthly Sales can be added here.
-  // For V1, we rely on per-row validation during parse plus the shared gates
-  // in the framework. Period-swing warnings are surfaced via the diff.
-  return { hardFails: [], softFails: [] };
-}
+/** wds_monthly_cartons import type — Cartons/units shipped per SKU per month. */
+export const wdsMonthlyCartonsStaging = createProcessor("cartons");
 
-// ---------- Contract export ----------
-
-export const wdsMonthlySalesStaging: ProcessorStagingContract<WdsMonthlySalesPayload> = {
-  parseToPayload,
-  writeFromPayload,
-  computeDiff,
-  runGates,
+// Reusable building blocks for non-Excel sources (e.g. blob JSON).
+export {
+  writeFromPayload as writeMonthlySalesPayload,
+  computeDiff as computeMonthlySalesDiff,
 };

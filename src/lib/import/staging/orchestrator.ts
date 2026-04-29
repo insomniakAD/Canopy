@@ -311,7 +311,8 @@ function prepareSpreadsheet(
   }
 
   const isAmazonReport = importType === "amazon_sales" || importType === "amazon_forecast";
-  const headerRow = isAmazonReport ? 1 : 0;
+  const isWdsMonthly = importType === "wds_monthly_sales" || importType === "wds_monthly_cartons";
+  const headerRow = isAmazonReport || isWdsMonthly ? 1 : 0;
   const parsed = parseSpreadsheet(buffer, fileName, { headerRow });
   return { headers: parsed.headers, rows: parsed.rows };
 }

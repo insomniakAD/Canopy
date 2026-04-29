@@ -22,6 +22,7 @@ const VALID_IMPORT_TYPES: ImportType[] = [
   "wds_active_items",
   "wds_inventory",
   "wds_monthly_sales",
+  "wds_monthly_cartons",
   "amazon_sales",
   "amazon_vendor_central",
   "amazon_forecast",

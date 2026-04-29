@@ -201,7 +201,7 @@ async function parseToPayload(
         const newName = cell(row, nameH);
         if (newName) updates.name = newName;
 
-        const statusRaw = cell(row, statusH).toLowerCase();
+        const statusRaw = cell(row, statusH).toLowerCase().replace(/\s+/g, "_");
         if (statusRaw) {
           const match = VALID_STATUS.find((s) => s === statusRaw);
           if (!match) {

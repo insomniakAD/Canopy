@@ -7,6 +7,7 @@ const TABS = [
   { href: "/admin/skus", label: "SKU Audit" },
   { href: "/admin/uploads", label: "Uploads" },
   { href: "/admin/review", label: "Review Inbox" },
+  { href: "/admin/sync", label: "Live Sync" },
 ];
 
 export function AdminTabs() {

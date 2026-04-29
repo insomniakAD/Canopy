@@ -100,7 +100,13 @@ async function loadFreshness(): Promise<Record<string, Date | null>> {
   try {
     const rows = await db.importBatch.groupBy({
       by: ["importType"],
-      where: { status: "completed", importType: { in: [...allKeys] } },
+      where: {
+        status: "completed",
+        importType: { in: [...allKeys] },
+        // Exclude cancelled staged batches — they were never written.
+        // Legacy direct-commit batches have null stagingStatus, hence the OR.
+        OR: [{ stagingStatus: "committed" }, { stagingStatus: null }],
+      },
       _max: { createdAt: true },
     });
     const map: Record<string, Date | null> = Object.fromEntries(allKeys.map((k) => [k, null]));

@@ -397,3 +397,11 @@ export const purchaseOrdersStaging: ProcessorStagingContract<PurchaseOrdersPaylo
   computeDiff,
   runGates,
 };
+
+// Reusable building blocks for non-Excel sources (e.g. blob JSON).
+// The blob PO processor produces the same PurchaseOrdersPayload, so write
+// and diff can be shared verbatim.
+export {
+  writeFromPayload as writePurchaseOrdersPayload,
+  computeDiff as computePurchaseOrdersDiff,
+};
