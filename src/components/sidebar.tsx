@@ -91,8 +91,8 @@ function NavItem({ href, label, icon }: { href: string; label: string; icon: str
       href={href}
       className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
         isActive
-          ? "bg-[var(--c-sidebar-active)] text-white font-medium"
-          : "text-[var(--c-sidebar-text)] hover:bg-[var(--c-sidebar-hover)] hover:text-white font-normal"
+          ? "bg-[var(--c-sidebar-active)] text-white font-normal"
+          : "text-[var(--c-sidebar-text)] hover:bg-[var(--c-sidebar-hover)] hover:text-white font-light"
       }`}
     >
       {ICONS[icon]}

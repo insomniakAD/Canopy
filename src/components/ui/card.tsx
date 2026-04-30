@@ -40,7 +40,7 @@ export function StatCard({ label, value, sub, accent = "default" }: StatCardProp
       <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--c-text-tertiary)]">
         {label}
       </p>
-      <p className={`font-sans text-[2.25rem] leading-none font-light tracking-[-0.03em] mt-2 ${ACCENT_COLORS[accent]}`}>
+      <p className={`font-sans text-[3.25rem] leading-none font-extralight tracking-[-0.03em] mt-3 ${ACCENT_COLORS[accent]}`}>
         {value}
       </p>
       {sub && (
