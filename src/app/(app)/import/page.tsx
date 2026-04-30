@@ -138,8 +138,7 @@ export default async function ImportPage({
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-[var(--c-text-primary)] mb-1">Import Data</h1>
-      <p className="text-sm text-[var(--c-text-secondary)] mb-6">
+      <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
         Upload Excel or CSV files from WDS and Amazon to keep Canopy&apos;s data current.
       </p>
 

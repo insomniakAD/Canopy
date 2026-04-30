@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { Card, Badge } from "@/components/ui";
+import { Card, StatCard, Badge } from "@/components/ui";
 import Link from "next/link";
 
 // ============================================================================
@@ -101,12 +101,9 @@ export default async function ForecastAccuracyPage() {
   if (pastForecasts.length === 0) {
     return (
       <div>
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">Forecast Accuracy</h1>
-          <p className="text-sm text-[var(--c-text-secondary)] mt-1">
-            Compare Amazon&apos;s forecasted demand against actual sales once forecast periods have passed.
-          </p>
-        </div>
+        <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
+          Compare Amazon&apos;s forecasted demand against actual sales once forecast periods have passed.
+        </p>
         <Card>
           <div className="text-center py-12">
             <p className="text-sm text-[var(--c-text-secondary)]">
@@ -267,43 +264,25 @@ export default async function ForecastAccuracyPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">Forecast Accuracy</h1>
-        <p className="text-sm text-[var(--c-text-secondary)] mt-1">
-          Comparing Amazon&apos;s forecasted demand vs. actual sales (1P + DI) for past weeks.
-        </p>
-      </div>
+      <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
+        Comparing Amazon&apos;s forecasted demand vs. actual sales (1P + DI) for past weeks.
+      </p>
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <p className="text-xs text-[var(--c-text-secondary)] font-medium uppercase">SKUs Evaluated</p>
-          <p className="text-2xl font-bold text-[var(--c-text-primary)] mt-1">{totalSkusEvaluated}</p>
-          <p className="text-xs text-[var(--c-text-tertiary)] mt-0.5">{totalWeeks} ASIN-weeks</p>
-        </Card>
-        <Card>
-          <p className="text-xs text-[var(--c-text-secondary)] font-medium uppercase">Overall Accuracy</p>
-          <p className={`text-2xl font-bold mt-1 ${
-            overallAccuracy >= 90 && overallAccuracy <= 110
-              ? "text-[var(--c-success)]"
-              : overallAccuracy >= 75 && overallAccuracy <= 125
-              ? "text-[var(--c-warning)]"
-              : "text-[var(--c-error)]"
-          }`}>
-            {overallAccuracy}%
-          </p>
-          <p className="text-xs text-[var(--c-text-tertiary)] mt-0.5">100% = perfect</p>
-        </Card>
-        <Card>
-          <p className="text-xs text-[var(--c-text-secondary)] font-medium uppercase">Over-forecasts</p>
-          <p className="text-2xl font-bold text-[var(--c-info)] mt-1">{overForecastCount}</p>
-          <p className="text-xs text-[var(--c-text-tertiary)] mt-0.5">Amazon predicts too high</p>
-        </Card>
-        <Card>
-          <p className="text-xs text-[var(--c-text-secondary)] font-medium uppercase">Under-forecasts</p>
-          <p className="text-2xl font-bold text-[var(--c-warning)] mt-1">{underForecastCount}</p>
-          <p className="text-xs text-[var(--c-text-tertiary)] mt-0.5">Amazon predicts too low</p>
-        </Card>
+        <StatCard label="SKUs Evaluated" value={totalSkusEvaluated} sub={`${totalWeeks} ASIN-weeks`} />
+        <StatCard
+          label="Overall Accuracy"
+          value={`${overallAccuracy}%`}
+          accent={
+            overallAccuracy >= 90 && overallAccuracy <= 110 ? "green"
+            : overallAccuracy >= 75 && overallAccuracy <= 125 ? "amber"
+            : "red"
+          }
+          sub="100% = perfect"
+        />
+        <StatCard label="Over-forecasts" value={overForecastCount} accent="blue" sub="Amazon predicts too high" />
+        <StatCard label="Under-forecasts" value={underForecastCount} accent="amber" sub="Amazon predicts too low" />
       </div>
 
       {/* Per-SKU accuracy table */}

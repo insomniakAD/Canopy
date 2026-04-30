@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { Card } from "@/components/ui";
+import { Card, StatCard } from "@/components/ui";
 import { TierManager } from "./tier-manager";
 
 export default async function TiersPage() {
@@ -48,27 +48,16 @@ export default async function TiersPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">SKU Tier Management</h1>
-          <p className="text-sm text-[var(--c-text-secondary)] mt-1">
-            Revenue-based tiering — A = top 25% revenue, B = top 50%, C = top 75%, LP = bottom 25%
-          </p>
-        </div>
-      </div>
+      <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
+        Revenue-based tiering — A = top 25% revenue, B = top 50%, C = top 75%, LP = bottom 25%
+      </p>
 
       {/* Current distribution */}
-      <Card title="Current Tier Distribution" subtitle="Active tiers applied to SKUs" className="mb-6">
-        <div className="grid grid-cols-4 gap-4">
-          {(["A", "B", "C", "LP"] as const).map((tier) => (
-            <div key={tier} className="text-center p-4 rounded-lg bg-[var(--c-page-bg)] border border-[var(--c-border)]">
-              <p className="text-xs text-[var(--c-text-secondary)] font-medium uppercase">Tier {tier}</p>
-              <p className="text-2xl font-bold text-[var(--c-text-primary)] mt-1">{tierCounts[tier]}</p>
-              <p className="text-xs text-[var(--c-text-tertiary)]">SKUs</p>
-            </div>
-          ))}
-        </div>
-      </Card>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {(["A", "B", "C", "LP"] as const).map((tier) => (
+          <StatCard key={tier} label={`Tier ${tier}`} value={tierCounts[tier]} sub="SKUs" />
+        ))}
+      </div>
 
       <TierManager
         runs={runs}

@@ -96,29 +96,15 @@ export default function ProfilePage() {
   };
 
   if (loading) {
-    return (
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">Profile</h1>
-        <p className="mt-4 text-sm text-[var(--c-text-secondary)]">Loading...</p>
-      </div>
-    );
+    return <p className="text-sm text-[var(--c-text-secondary)]">Loading...</p>;
   }
 
   if (!profile) {
-    return (
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">Profile</h1>
-        <p className="mt-4 text-sm text-[var(--c-error)]">Could not load profile.</p>
-      </div>
-    );
+    return <p className="text-sm text-[var(--c-error)]">Could not load profile.</p>;
   }
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">Profile</h1>
-      <p className="text-sm text-[var(--c-text-secondary)] mt-1">
-        Manage your account settings
-      </p>
 
       <form onSubmit={handleSave} className="mt-6 space-y-6">
         {/* Account Info */}

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { Card, Badge } from "@/components/ui";
+import { Card, StatCard, Badge } from "@/components/ui";
 import Link from "next/link";
 import {
   calculateForecastDrops,
@@ -68,31 +68,16 @@ export default async function AmazonDoiPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">Amazon Days of Inventory</h1>
-        <p className="text-sm text-[var(--c-text-secondary)] mt-1">
-          How many days of stock Amazon holds for each SKU. Low DOI = Amazon may issue a PO soon.
-        </p>
-      </div>
+      <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
+        How many days of stock Amazon holds per SKU. Low DOI = Amazon may issue a PO soon.
+      </p>
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <p className="text-xs text-[var(--c-text-secondary)] font-medium uppercase">Amazon SKUs</p>
-          <p className="text-2xl font-bold text-[var(--c-text-primary)] mt-1">{totalSkus}</p>
-        </Card>
-        <Card>
-          <p className="text-xs text-[var(--c-text-secondary)] font-medium uppercase">Avg DOI</p>
-          <p className="text-2xl font-bold text-[var(--c-text-primary)] mt-1">{avgDoi}d</p>
-        </Card>
-        <Card>
-          <p className="text-xs text-[var(--c-error)] font-medium uppercase">Critical / Low</p>
-          <p className="text-2xl font-bold text-[var(--c-error)] mt-1">{criticalCount + lowCount}</p>
-        </Card>
-        <Card>
-          <p className="text-xs text-[var(--c-success)] font-medium uppercase">Healthy</p>
-          <p className="text-2xl font-bold text-[var(--c-success)] mt-1">{healthyCount}</p>
-        </Card>
+        <StatCard label="Amazon SKUs" value={totalSkus} />
+        <StatCard label="Avg DOI" value={`${avgDoi}d`} />
+        <StatCard label="Critical / Low" value={criticalCount + lowCount} accent="red" />
+        <StatCard label="Healthy" value={healthyCount} accent="green" />
       </div>
 
       {/* Main table */}

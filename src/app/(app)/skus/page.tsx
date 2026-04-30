@@ -114,14 +114,11 @@ export default async function SkuPlanningPage() {
 
   if (!data.ok) {
     return (
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--c-text-primary)] mb-1">SKU Planning</h1>
-        <div className="mt-6 bg-[var(--c-warning-bg)] border border-[var(--c-warning-border)] rounded-xl px-6 py-5">
-          <p className="font-semibold text-[var(--c-warning-text)]">Database not connected</p>
-          <p className="text-sm text-[var(--c-warning-text-alt)] mt-1">
-            Set up the database to view SKU planning recommendations.
-          </p>
-        </div>
+      <div className="bg-[var(--c-warning-bg)] border border-[var(--c-warning-border)] rounded-xl px-6 py-5">
+        <p className="font-semibold text-[var(--c-warning-text)]">Database not connected</p>
+        <p className="text-sm text-[var(--c-warning-text-alt)] mt-1">
+          Set up the database to view SKU planning recommendations.
+        </p>
       </div>
     );
   }
@@ -131,15 +128,12 @@ export default async function SkuPlanningPage() {
 
   return (
     <div>
-      <div className="flex items-end justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">SKU Planning</h1>
-          <p className="text-sm text-[var(--c-text-secondary)] mt-1">
-            {lastRun
-              ? `Recommendations as of ${new Date(lastRun).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
-              : "No recommendations generated yet"}
-          </p>
-        </div>
+      <div className="flex items-center justify-between mb-5">
+        <p className="text-sm text-[var(--c-text-tertiary)]">
+          {lastRun
+            ? `Recommendations as of ${new Date(lastRun).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+            : "No recommendations generated yet"}
+        </p>
         <RunEngineButton missingReports={missingReports} />
       </div>
 

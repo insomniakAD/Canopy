@@ -73,22 +73,18 @@ export default async function SettingsPage() {
 
   if (!data.ok) {
     return (
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">Settings</h1>
-        <div className="mt-6 bg-[var(--c-warning-bg)] border border-[var(--c-warning-border)] rounded-xl px-6 py-5">
-          <p className="font-semibold text-[var(--c-warning-text)]">Database not connected</p>
-          <p className="text-sm text-[var(--c-warning-text-alt)] mt-1">
-            Configuration tables will be available after database setup.
-          </p>
-        </div>
+      <div className="bg-[var(--c-warning-bg)] border border-[var(--c-warning-border)] rounded-xl px-6 py-5">
+        <p className="font-semibold text-[var(--c-warning-text)]">Database not connected</p>
+        <p className="text-sm text-[var(--c-warning-text-alt)] mt-1">
+          Configuration tables will be available after database setup.
+        </p>
       </div>
     );
   }
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-[var(--c-text-primary)] mb-1">Settings</h1>
-      <p className="text-sm text-[var(--c-text-secondary)] mb-6">
+      <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
         Configuration tables that control how Canopy calculates recommendations. Changes here affect the next recommendation run.
       </p>
 

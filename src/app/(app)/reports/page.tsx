@@ -136,11 +136,8 @@ export default async function ReportsPage() {
 
   if (!data.ok) {
     return (
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">Leadership Reports</h1>
-        <div className="mt-6 bg-[var(--c-warning-bg)] border border-[var(--c-warning-border)] rounded-xl px-6 py-5">
-          <p className="font-semibold text-[var(--c-warning-text)]">Database not connected</p>
-        </div>
+      <div className="bg-[var(--c-warning-bg)] border border-[var(--c-warning-border)] rounded-xl px-6 py-5">
+        <p className="font-semibold text-[var(--c-warning-text)]">Database not connected</p>
       </div>
     );
   }
@@ -154,8 +151,7 @@ export default async function ReportsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-[var(--c-text-primary)] mb-1">Leadership Reports</h1>
-      <p className="text-sm text-[var(--c-text-secondary)] mb-6">
+      <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
         High-level view of purchasing posture, risk exposure, and forecast accuracy.
         {lastRun && ` Data as of ${fmtDate(lastRun)}.`}
       </p>

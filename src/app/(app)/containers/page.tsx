@@ -166,11 +166,8 @@ export default async function ContainerPlanningPage() {
 
   if (!data.ok) {
     return (
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">Container Planning</h1>
-        <div className="mt-6 bg-[var(--c-warning-bg)] border border-[var(--c-warning-border)] rounded-xl px-6 py-5">
-          <p className="font-semibold text-[var(--c-warning-text)]">Database not connected</p>
-        </div>
+      <div className="bg-[var(--c-warning-bg)] border border-[var(--c-warning-border)] rounded-xl px-6 py-5">
+        <p className="font-semibold text-[var(--c-warning-text)]">Database not connected</p>
       </div>
     );
   }
@@ -179,13 +176,12 @@ export default async function ContainerPlanningPage() {
 
   return (
     <div>
-      <div className="flex items-start justify-between mb-1">
-        <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">Container Planning</h1>
+      <div className="flex items-center justify-between mb-5">
+        <p className="text-sm text-[var(--c-text-tertiary)]">
+          Rough load by factory. Factories confirm 40GP vs 40HQ at load.
+        </p>
         <ContainerExport plans={plans} />
       </div>
-      <p className="text-sm text-[var(--c-text-secondary)] mb-6">
-        Rough container load by factory. Each SKU&apos;s order is compared to its 40HQ FCL quantity — summed per factory to estimate container count. Factories confirm 40GP vs 40HQ at load.
-      </p>
 
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">

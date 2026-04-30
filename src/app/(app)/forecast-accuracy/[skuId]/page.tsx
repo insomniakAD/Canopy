@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { Card, Badge } from "@/components/ui";
+import { Card, StatCard, Badge } from "@/components/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -143,7 +143,7 @@ export default async function ForecastAccuracyDetailPage({
         >
           &larr; Back to Forecast Accuracy
         </Link>
-        <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">{sku.skuCode}</h1>
+        <h1 className="text-xl font-semibold text-[var(--c-text-primary)]">{sku.skuCode}</h1>
         <p className="text-sm text-[var(--c-text-secondary)] mt-1">
           {sku.name} &middot; ASIN: {sku.asin ?? "—"} &middot; Tier {sku.tier}
         </p>
@@ -151,30 +151,19 @@ export default async function ForecastAccuracyDetailPage({
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <p className="text-xs text-[var(--c-text-secondary)] font-medium uppercase">Past Weeks</p>
-          <p className="text-2xl font-bold text-[var(--c-text-primary)] mt-1">{pastWeeks.length}</p>
-        </Card>
-        <Card>
-          <p className="text-xs text-[var(--c-text-secondary)] font-medium uppercase">Total Forecast</p>
-          <p className="text-2xl font-bold text-[var(--c-text-primary)] mt-1">{Math.round(totalForecast)}</p>
-        </Card>
-        <Card>
-          <p className="text-xs text-[var(--c-text-secondary)] font-medium uppercase">Total Actual</p>
-          <p className="text-2xl font-bold text-[var(--c-text-primary)] mt-1">{Math.round(totalActual)}</p>
-        </Card>
-        <Card>
-          <p className="text-xs text-[var(--c-text-secondary)] font-medium uppercase">Overall Accuracy</p>
-          <p className={`text-2xl font-bold mt-1 ${
-            overallAccuracy !== null && overallAccuracy >= 90 && overallAccuracy <= 110
-              ? "text-[var(--c-success)]"
-              : overallAccuracy !== null && overallAccuracy >= 75 && overallAccuracy <= 125
-              ? "text-[var(--c-warning)]"
-              : "text-[var(--c-error)]"
-          }`}>
-            {overallAccuracy !== null ? `${overallAccuracy}%` : "—"}
-          </p>
-        </Card>
+        <StatCard label="Past Weeks" value={pastWeeks.length} />
+        <StatCard label="Total Forecast" value={Math.round(totalForecast)} />
+        <StatCard label="Total Actual" value={Math.round(totalActual)} />
+        <StatCard
+          label="Overall Accuracy"
+          value={overallAccuracy !== null ? `${overallAccuracy}%` : "—"}
+          accent={
+            overallAccuracy === null ? "default"
+            : overallAccuracy >= 90 && overallAccuracy <= 110 ? "green"
+            : overallAccuracy >= 75 && overallAccuracy <= 125 ? "amber"
+            : "red"
+          }
+        />
       </div>
 
       {/* Week-by-week table */}

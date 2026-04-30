@@ -167,7 +167,7 @@ export default async function SkuDetailPage({
       {/* Header */}
       <div className="mt-4 mb-6">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">{sku.skuCode}</h1>
+          <h1 className="text-xl font-semibold text-[var(--c-text-primary)]">{sku.skuCode}</h1>
           <TierBadge tier={sku.tier} />
           {rec && <Badge variant={rec.decision as "order" | "watch" | "do_not_order"} />}
         </div>
