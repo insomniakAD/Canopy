@@ -47,12 +47,29 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--c-page-bg)]">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-[var(--c-text-primary)]">Canopy</h1>
-          <p className="text-sm text-[var(--c-text-secondary)] mt-1">Winsome Purchasing Planning</p>
+        <div className="flex flex-col items-center mb-8 gap-3">
+          <div className="w-12 h-12 rounded-xl bg-[var(--c-navy)] flex items-center justify-center">
+            <svg width="34" height="22" viewBox="0 0 64 40" fill="none">
+              <path
+                d="M 2 2 L 20 38 L 32 12 L 44 38 L 62 2"
+                stroke="white"
+                strokeWidth="8"
+                strokeLinecap="square"
+                strokeLinejoin="miter"
+              />
+            </svg>
+          </div>
+          <div className="font-display text-center">
+            <div className="text-base font-medium text-[var(--c-text-primary)] tracking-[0.12em] uppercase leading-tight">
+              Winsome
+            </div>
+            <div className="text-[11px] text-[var(--c-text-tertiary)] tracking-[0.14em] uppercase leading-tight mt-0.5">
+              Purchasing
+            </div>
+          </div>
         </div>
 
-        <div className="bg-[var(--c-card-bg)] border border-[var(--c-border)] rounded-xl px-6 py-8 shadow-sm">
+        <div className="bg-[var(--c-card-bg)] border border-[var(--c-border)] rounded-xl px-6 py-8">
           <h2 className="text-lg font-semibold text-[var(--c-text-primary)] mb-6">Sign in</h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">

@@ -84,7 +84,7 @@ export function TierManager({ runs, skus }: Props) {
             <button
               onClick={() => handleAction("rollback")}
               disabled={loading}
-              className="px-5 py-2.5 bg-[var(--c-warning)] text-white text-sm font-medium rounded-lg hover:opacity-90 disabled:opacity-50 transition-colors"
+              className="px-5 py-2.5 border border-[var(--c-border)] text-[var(--c-text-secondary)] text-sm font-medium rounded-lg hover:bg-[var(--c-surface)] disabled:opacity-50 transition-colors"
             >
               Rollback
             </button>

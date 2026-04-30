@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, DM_Sans } from "next/font/google";
+import { Inter, DM_Sans } from "next/font/google";
 import "./globals.css";
 
-const plexSans = IBM_Plex_Sans({
+const inter = Inter({
   variable: "--font-body",
   subsets: ["latin"],
   weight: ["300", "400", "500", "600"],
@@ -39,7 +39,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${plexSans.variable} ${dmSans.variable} h-full antialiased`}
+      className={`${inter.variable} ${dmSans.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>
