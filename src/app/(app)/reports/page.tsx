@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { Card, StatCard, Badge, TierBadge } from "@/components/ui";
+import { PageHeader } from "@/components/page-header";
 import Link from "next/link";
 import { StockoutExport, CountryExport } from "./report-export";
 
@@ -151,6 +152,7 @@ export default async function ReportsPage() {
 
   return (
     <div>
+      <PageHeader title="Leadership Reports" />
       <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
         High-level view of purchasing posture, risk exposure, and forecast accuracy.
         {lastRun && ` Data as of ${fmtDate(lastRun)}.`}

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { Card, StatCard, Badge } from "@/components/ui";
+import { PageHeader } from "@/components/page-header";
 import Link from "next/link";
 import {
   calculateForecastDrops,
@@ -68,6 +69,8 @@ export default async function AmazonDoiPage() {
 
   return (
     <div>
+      <PageHeader title="Amazon DOI" />
+
       <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
         How many days of stock Amazon holds per SKU. Low DOI = Amazon may issue a PO soon.
       </p>

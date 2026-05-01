@@ -1,9 +1,10 @@
 import { AdminTabs } from "./admin-tabs";
+import { PageHeader } from "@/components/page-header";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div>
-      <h1 className="text-2xl font-bold text-[var(--c-text-primary)] mb-1">Admin</h1>
+      <PageHeader title="Admin" />
       <p className="text-sm text-[var(--c-text-secondary)] mb-6">
         Audit loaded data and manage SKU definition uploads.
       </p>

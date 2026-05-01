@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { Card, Badge } from "@/components/ui";
+import { PageHeader } from "@/components/page-header";
 import { ImportClient } from "./import-client";
 import { StagedBannerClient } from "./staged-banner-client";
 
@@ -138,6 +139,7 @@ export default async function ImportPage({
 
   return (
     <div>
+      <PageHeader title="Import Data" />
       <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
         Upload Excel or CSV files from WDS and Amazon to keep Canopy&apos;s data current.
       </p>

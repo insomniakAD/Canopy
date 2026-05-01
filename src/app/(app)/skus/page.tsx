@@ -3,6 +3,7 @@ import { Card, StatCard } from "@/components/ui";
 import { SkuTable } from "./sku-table";
 import { RunEngineButton } from "@/components/run-engine-button";
 import { TransitionsTable, type TransitionRow } from "./transitions-table";
+import { PageHeader } from "@/components/page-header";
 
 const REQUIRED_IMPORT_TYPES = [
   "wds_inventory",
@@ -128,14 +129,16 @@ export default async function SkuPlanningPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
-        <p className="text-sm text-[var(--c-text-tertiary)]">
-          {lastRun
-            ? `Recommendations as of ${new Date(lastRun).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
-            : "No recommendations generated yet"}
-        </p>
-        <RunEngineButton missingReports={missingReports} />
-      </div>
+      <PageHeader
+        title="SKU Planning"
+        actions={<RunEngineButton missingReports={missingReports} />}
+      />
+
+      <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
+        {lastRun
+          ? `Recommendations as of ${new Date(lastRun).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+          : "No recommendations generated yet"}
+      </p>
 
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui";
+import { PageHeader } from "@/components/page-header";
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Admin",
@@ -104,9 +105,10 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="max-w-2xl">
-
-      <form onSubmit={handleSave} className="mt-6 space-y-6">
+    <div>
+      <PageHeader title="My Profile" />
+      <div className="max-w-2xl">
+      <form onSubmit={handleSave} className="space-y-6">
         {/* Account Info */}
         <Card title="Account">
           <div className="space-y-4">
@@ -231,6 +233,7 @@ export default function ProfilePage() {
           )}
         </div>
       </form>
+      </div>
     </div>
   );
 }

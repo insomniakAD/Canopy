@@ -114,6 +114,79 @@ function NavGroup({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
+// ---- SidebarSearch ----
+
+function SidebarSearch() {
+  return (
+    <div className="px-3 py-2">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--c-sidebar-text-muted)] px-3 mb-1">
+        Search
+      </p>
+      <div className="px-3 mt-1">
+        <div className="relative">
+          <svg
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-[var(--c-sidebar-text-muted)]"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+            />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search SKUs, ASINs..."
+            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg bg-[var(--c-sidebar-hover)] border border-transparent focus:outline-none focus:border-white/15 text-white placeholder:text-[var(--c-sidebar-text-muted)] font-light"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- SidebarThemeToggle ----
+
+function SidebarThemeToggle() {
+  const [dark, setDark] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    setDark(document.documentElement.classList.contains("dark"));
+  }, []);
+
+  const toggle = () => {
+    const next = !dark;
+    setDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("canopy-theme", next ? "dark" : "light");
+  };
+
+  if (!mounted) return <div className="h-9" />;
+
+  return (
+    <button
+      onClick={toggle}
+      className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm font-light text-[var(--c-sidebar-text)] hover:bg-[var(--c-sidebar-hover)] hover:text-white transition-colors"
+    >
+      {dark ? (
+        <svg className="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+        </svg>
+      ) : (
+        <svg className="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+        </svg>
+      )}
+      <span>{dark ? "Light Theme" : "Dark Theme"}</span>
+    </button>
+  );
+}
+
 // ---- UserMenu ----
 
 function UserMenu() {
@@ -240,12 +313,17 @@ export function Sidebar() {
             <NavItem key={item.href} {...item} />
           ))}
         </NavGroup>
+
+        <div className="border-t border-[var(--c-sidebar-border)] mx-3 my-1" />
+
+        <SidebarSearch />
       </div>
 
       {/* Footer */}
       <div className="border-t border-[var(--c-sidebar-border)]">
-        <div className="px-3 pt-2 pb-1">
+        <div className="px-3 pt-2 pb-1 space-y-0.5">
           <NavItem href="/settings" label="Settings" icon="gear" />
+          <SidebarThemeToggle />
         </div>
         <div className="px-3 pb-3">
           <UserMenu />

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { Card, StatCard, TierBadge } from "@/components/ui";
+import { PageHeader } from "@/components/page-header";
 import Link from "next/link";
 import { ContainerExport } from "./container-export";
 import { calculateFclHint } from "@/lib/reorder/container";
@@ -176,12 +177,14 @@ export default async function ContainerPlanningPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
-        <p className="text-sm text-[var(--c-text-tertiary)]">
-          Rough load by factory. Factories confirm 40GP vs 40HQ at load.
-        </p>
-        <ContainerExport plans={plans} />
-      </div>
+      <PageHeader
+        title="Container Planning"
+        actions={<ContainerExport plans={plans} />}
+      />
+
+      <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
+        Rough load by factory. Factories confirm 40GP vs 40HQ at load.
+      </p>
 
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">

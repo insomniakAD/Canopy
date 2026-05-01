@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { Card, StatCard, Badge } from "@/components/ui";
+import { PageHeader } from "@/components/page-header";
 import Link from "next/link";
 
 // ============================================================================
@@ -101,6 +102,7 @@ export default async function ForecastAccuracyPage() {
   if (pastForecasts.length === 0) {
     return (
       <div>
+        <PageHeader title="Forecast Accuracy" />
         <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
           Compare Amazon&apos;s forecasted demand against actual sales once forecast periods have passed.
         </p>
@@ -264,6 +266,7 @@ export default async function ForecastAccuracyPage() {
 
   return (
     <div>
+      <PageHeader title="Forecast Accuracy" />
       <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
         Comparing Amazon&apos;s forecasted demand vs. actual sales (1P + DI) for past weeks.
       </p>

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui";
+import { PageHeader } from "@/components/page-header";
 import { SettingsEditor } from "./settings-editor";
 
 const MONTH_NAMES = [
@@ -84,6 +85,7 @@ export default async function SettingsPage() {
 
   return (
     <div>
+      <PageHeader title="Settings" />
       <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
         Configuration tables that control how Canopy calculates recommendations. Changes here affect the next recommendation run.
       </p>

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { Card, StatCard } from "@/components/ui";
+import { PageHeader } from "@/components/page-header";
 import { TierManager } from "./tier-manager";
 
 export default async function TiersPage() {
@@ -48,6 +49,8 @@ export default async function TiersPage() {
 
   return (
     <div>
+      <PageHeader title="Tier Management" />
+
       <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
         Revenue-based tiering — A = top 25% revenue, B = top 50%, C = top 75%, LP = bottom 25%
       </p>

@@ -8,6 +8,7 @@ import {
   loadDropAlertSettings,
 } from "@/lib/engine/drop-alerts";
 import { RunEngineButton } from "@/components/run-engine-button";
+import { PageHeader } from "@/components/page-header";
 
 // ---- Helpers ----------------------------------------------------------------
 
@@ -215,15 +216,16 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      {/* Top action row */}
-      <div className="flex items-center justify-between mb-5">
-        <p className="text-sm text-[var(--c-text-tertiary)]">
-          {lastRunDate
-            ? `Last run: ${fmtDate(lastRunDate)}`
-            : "No recommendations yet"}
-        </p>
-        <RunEngineButton missingReports={missingReports} />
-      </div>
+      <PageHeader
+        title="Dashboard"
+        actions={<RunEngineButton missingReports={missingReports} />}
+      />
+
+      <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
+        {lastRunDate
+          ? `Last run: ${fmtDate(lastRunDate)}`
+          : "No recommendations yet"}
+      </p>
 
       {/* Alert banner strip */}
       {hasAlerts && (
