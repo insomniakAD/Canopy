@@ -162,21 +162,21 @@ export default async function ImportPage({
 
       {/* Data freshness */}
       <Card title="Data Freshness" className="mb-6">
-        <div className="divide-y divide-[var(--c-border)]">
+        <div className="space-y-7 py-2">
           {FRESHNESS_CATEGORIES.map((cat) => (
-            <div key={cat.label} className="py-4 first:pt-0 last:pb-0">
-              <p className="text-xs font-medium text-[var(--c-text-secondary)] uppercase tracking-wide mb-3">
+            <div key={cat.label}>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--c-text-tertiary)] mb-4">
                 {cat.label}
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-3.5">
                 {cat.sources.map((source) => {
                   const date = freshness[source.key] ?? null;
                   return (
-                    <div key={source.key} className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 bg-[var(--c-page-bg)]">
-                      <span className="text-sm text-[var(--c-text-primary)]">{source.label}</span>
-                      <div className="flex items-center gap-2 flex-shrink-0">
+                    <div key={source.key} className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-light text-[var(--c-text-primary)]">{source.label}</span>
+                      <div className="flex items-center gap-3 flex-shrink-0">
                         {date && (
-                          <span className="text-xs text-[var(--c-text-tertiary)] whitespace-nowrap">
+                          <span className="text-xs font-light text-[var(--c-text-tertiary)] whitespace-nowrap">
                             {fmtDate(date)}
                           </span>
                         )}
