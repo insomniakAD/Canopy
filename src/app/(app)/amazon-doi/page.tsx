@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
-import { Card, StatCard, Badge } from "@/components/ui";
+import { Card, Badge } from "@/components/ui";
 import { PageHeader } from "@/components/page-header";
+import { AlertBanner } from "@/components/alert-banner";
+import { DoiDistributionCard, DoiVarianceBars } from "./doi-charts";
 import Link from "next/link";
 import {
   calculateForecastDrops,
@@ -29,7 +31,6 @@ function DiStatusBadge({ status }: { status: string | null }) {
 }
 
 export default async function AmazonDoiPage() {
-  // Load current recommendations with Amazon DOI data
   const recommendations = await prisma.reorderRecommendation.findMany({
     where: {
       isCurrent: true,
@@ -46,26 +47,32 @@ export default async function AmazonDoiPage() {
         },
       },
     },
-    orderBy: { amazonDoi: "asc" }, // Lowest DOI first (most urgent)
+    orderBy: { amazonDoi: "asc" },
   });
 
-  // Forecast drop alerts — per-SKU map for the table chip
   const dropSettings = await loadDropAlertSettings(prisma);
   const forecastDrops = await calculateForecastDrops(prisma, new Date(), dropSettings);
   const dropBySku = new Map(forecastDrops.map((d) => [d.skuId, d]));
 
-  // Summary stats
-  const totalSkus = recommendations.length;
-  const criticalCount = recommendations.filter((r) => Number(r.amazonDoi) < (r.amazonTargetDoi ?? 40) * 0.3).length;
-  const lowCount = recommendations.filter((r) => {
-    const doi = Number(r.amazonDoi);
-    const target = r.amazonTargetDoi ?? 40;
-    return doi >= target * 0.3 && doi < target * 0.6;
-  }).length;
-  const healthyCount = recommendations.filter((r) => Number(r.amazonDoi) >= (r.amazonTargetDoi ?? 40) * 0.9).length;
-  const avgDoi = totalSkus > 0
-    ? Math.round(recommendations.reduce((s, r) => s + Number(r.amazonDoi ?? 0), 0) / totalSkus)
-    : 0;
+  // Bucket SKUs by DOI relative to target
+  const points = recommendations.map((r) => ({
+    skuCode: r.sku.skuCode,
+    doi: Number(r.amazonDoi ?? 0),
+    target: r.amazonTargetDoi ?? 40,
+  }));
+
+  const belowCount = points.filter((p) => p.doi < p.target * 0.9).length;
+  const aboveCount = points.filter((p) => p.doi > p.target * 1.1).length;
+  const onTargetCount = points.length - belowCount - aboveCount;
+
+  // Forecast drop banner content
+  const dropSkuCodes = forecastDrops
+    .map((d) => recommendations.find((r) => r.skuId === d.skuId)?.sku.skuCode)
+    .filter((c): c is string => Boolean(c))
+    .slice(0, 2);
+  const dropDescription = forecastDrops.length === 0
+    ? null
+    : `Amazon WoW forecast down ≥${dropSettings.forecastDropPct}% on ${dropSkuCodes.join(" and ")}${forecastDrops.length > dropSkuCodes.length ? ` and ${forecastDrops.length - dropSkuCodes.length} more` : ""}. Review reorder quantities.`;
 
   return (
     <div>
@@ -75,12 +82,30 @@ export default async function AmazonDoiPage() {
         How many days of stock Amazon holds per SKU. Low DOI = Amazon may issue a PO soon.
       </p>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Amazon SKUs" value={totalSkus} />
-        <StatCard label="Avg DOI" value={`${avgDoi}d`} />
-        <StatCard label="Critical / Low" value={criticalCount + lowCount} accent="red" />
-        <StatCard label="Healthy" value={healthyCount} accent="green" />
+      {dropDescription && (
+        <div className="mb-6">
+          <AlertBanner
+            variant="warning"
+            title="Forecast Drop Detected"
+            description={dropDescription}
+            href="#drops"
+            cta={`View ${forecastDrops.length} ASIN${forecastDrops.length !== 1 ? "s" : ""}`}
+          />
+        </div>
+      )}
+
+      {/* Distribution + variance charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <div className="lg:col-span-1">
+          <DoiDistributionCard
+            belowCount={belowCount}
+            onTargetCount={onTargetCount}
+            aboveCount={aboveCount}
+          />
+        </div>
+        <div className="lg:col-span-2">
+          <DoiVarianceBars points={points} />
+        </div>
       </div>
 
       {/* Main table */}
@@ -118,7 +143,7 @@ export default async function AmazonDoiPage() {
                   const doi = Number(rec.amazonDoi ?? 0);
                   const target = rec.amazonTargetDoi ?? 40;
                   return (
-                    <tr key={rec.id} className="border-b border-[var(--c-border-row)] hover:bg-[var(--c-row-hover)]">
+                    <tr key={rec.id} className="border-b border-[var(--c-border-row)] even:bg-[var(--c-surface)] hover:bg-[var(--c-page-bg)]">
                       <td className="px-6 py-3">
                         <Link
                           href={`/skus/${rec.skuId}`}
@@ -132,29 +157,29 @@ export default async function AmazonDoiPage() {
                         {rec.sku.asin ?? "—"}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <Badge variant="neutral">Tier {rec.sku.tier}</Badge>
+                        <Badge variant="neutral">T-{rec.sku.tier}</Badge>
                       </td>
-                      <td className="px-4 py-3 text-right font-mono">
+                      <td className="px-4 py-3 text-right tabular-nums">
                         {rec.amazonOnHand?.toLocaleString() ?? "—"}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono">
+                      <td className="px-4 py-3 text-right tabular-nums">
                         {rec.amazonDailyVelocity != null ? Number(rec.amazonDailyVelocity).toFixed(1) : "—"}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono font-bold">
+                      <td className="px-4 py-3 text-right tabular-nums font-bold">
                         {doi.toFixed(0)}d
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-[var(--c-text-secondary)]">
+                      <td className="px-4 py-3 text-right tabular-nums text-[var(--c-text-secondary)]">
                         {target}d
                       </td>
                       <td className="px-4 py-3 text-center">
                         <DoiBadge doi={doi} target={target} />
                       </td>
-                      <td className="px-4 py-3 text-right font-mono">
+                      <td className="px-4 py-3 text-right tabular-nums">
                         {rec.woodinvilleExposure != null
                           ? `${Number(rec.woodinvilleExposure).toFixed(1)}/wk`
                           : "—"}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono">
+                      <td className="px-4 py-3 text-right tabular-nums">
                         {rec.diSharePct != null && Number(rec.diSharePct) > 0
                           ? `${Number(rec.diSharePct).toFixed(0)}%`
                           : "—"}
