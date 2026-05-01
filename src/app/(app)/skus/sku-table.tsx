@@ -28,13 +28,44 @@ interface Rec {
 }
 
 function fmtWos(v: number) {
-  return `${v.toFixed(1)}w`;
+  return `${v.toFixed(1)}wk`;
 }
 
 function fmtDate(d: string | null) {
-  if (!d) return "\u2014";
+  if (!d) return "—";
   return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
+
+const DECISION_FILTERS = [
+  { value: "all", label: "All" },
+  { value: "order", label: "Order" },
+  { value: "watch", label: "Watch" },
+  { value: "do_not_order", label: "Do Not Order" },
+] as const;
+
+const TIER_FILTERS = [
+  { value: "all", label: "All Tiers" },
+  { value: "A", label: "A" },
+  { value: "B", label: "B" },
+  { value: "C", label: "C" },
+  { value: "LP", label: "LP" },
+] as const;
+
+// Row priority styling — tint matches the left-edge bar but at lower opacity
+const ROW_STYLES: Record<string, { bg: string; bar: string }> = {
+  order: {
+    bg: "bg-[var(--c-error-bg-light)]",
+    bar: "var(--c-error)",
+  },
+  watch: {
+    bg: "bg-[var(--c-warning-bg)]/30",
+    bar: "var(--c-warning)",
+  },
+  do_not_order: {
+    bg: "",
+    bar: "transparent",
+  },
+};
 
 export function SkuTable({ recommendations }: { recommendations: Rec[] }) {
   const [filter, setFilter] = useState<string>("all");
@@ -77,56 +108,54 @@ export function SkuTable({ recommendations }: { recommendations: Rec[] }) {
   }, [filtered]);
 
   return (
-    <div className="bg-[var(--c-card-bg)] rounded-xl border border-[var(--c-border)] shadow-sm">
+    <div className="bg-[var(--c-card-bg)] rounded-xl border border-[var(--c-border)]">
       {/* Filters bar */}
-      <div className="px-6 py-4 border-b border-[var(--c-border)] flex flex-wrap items-center gap-3">
-        {/* Decision filter */}
-        <div className="flex rounded-lg border border-[var(--c-border)] overflow-hidden text-sm">
-          {[
-            { value: "all", label: "All" },
-            { value: "order", label: "Order" },
-            { value: "watch", label: "Watch" },
-            { value: "do_not_order", label: "Do Not Order" },
-          ].map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => setFilter(opt.value)}
-              className={`px-3 py-1.5 font-medium transition-colors ${
-                filter === opt.value
-                  ? "bg-[var(--c-accent)] text-white"
-                  : "text-[var(--c-text-secondary)] hover:bg-[var(--c-border-row)]"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+      <div className="px-6 py-4 border-b border-[var(--c-border)] flex flex-wrap items-center gap-2">
+        {/* Decision pills */}
+        {DECISION_FILTERS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => setFilter(opt.value)}
+            className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
+              filter === opt.value
+                ? "bg-[var(--c-accent)] text-white border-[var(--c-accent)]"
+                : "border-[var(--c-border)] text-[var(--c-text-secondary)] hover:bg-[var(--c-surface)]"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+
+        {/* Tier pills */}
+        <div className="w-px h-5 bg-[var(--c-border)] mx-1" />
+        {TIER_FILTERS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => setTierFilter(opt.value)}
+            className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
+              tierFilter === opt.value
+                ? "bg-[var(--c-accent)] text-white border-[var(--c-accent)]"
+                : "border-[var(--c-border)] text-[var(--c-text-secondary)] hover:bg-[var(--c-surface)]"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+
+        {/* Search + count + export, right-aligned */}
+        <div className="ml-auto flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="Search SKU, name, or ASIN…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="border border-[var(--c-border)] rounded-lg px-3 py-1.5 text-sm bg-[var(--c-card-bg)] w-56 focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]"
+          />
+          <span className="text-xs text-[var(--c-text-tertiary)] whitespace-nowrap">
+            {filtered.length} of {recommendations.length}
+          </span>
+          <ExportButton data={exportData} filename="canopy-sku-recommendations.csv" />
         </div>
-
-        {/* Tier filter */}
-        <select
-          value={tierFilter}
-          onChange={(e) => setTierFilter(e.target.value)}
-          className="border border-[var(--c-border)] rounded-lg px-3 py-1.5 text-sm bg-[var(--c-card-bg)]"
-        >
-          <option value="all">All Tiers</option>
-          <option value="A">Tier A</option>
-          <option value="B">Tier B</option>
-          <option value="C">Tier C</option>
-        </select>
-
-        {/* Search */}
-        <input
-          type="text"
-          placeholder="Search SKU, name, or ASIN\u2026"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="border border-[var(--c-border)] rounded-lg px-3 py-1.5 text-sm bg-[var(--c-card-bg)] flex-1 min-w-[200px] focus:outline-none focus:ring-2 focus:ring-[var(--c-accent)]"
-        />
-
-        <span className="text-xs text-[var(--c-text-tertiary)] ml-auto">
-          {filtered.length} of {recommendations.length} SKUs
-        </span>
-        <ExportButton data={exportData} filename="canopy-sku-recommendations.csv" />
       </div>
 
       {/* Table */}
@@ -155,41 +184,51 @@ export function SkuTable({ recommendations }: { recommendations: Rec[] }) {
                 </td>
               </tr>
             ) : (
-              filtered.map((r) => (
-                <tr key={r.id} className="border-b border-[var(--c-border-row)] hover:bg-[var(--c-page-bg)]">
-                  <td className="px-6 py-3">
-                    <Link href={`/skus/${r.skuId}`} className="text-[var(--c-accent)] font-medium hover:underline">
-                      {r.skuCode}
-                    </Link>
-                    <p className="text-xs text-[var(--c-text-tertiary)] truncate max-w-[180px]">{r.skuName}</p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <TierBadge tier={r.tier} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant={r.decision as "order" | "watch" | "do_not_order"} />
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono">{r.weeklyDemand.toFixed(1)}</td>
-                  <td className="px-4 py-3 text-right font-mono">{r.onHandInventory.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right font-mono">{r.inboundInventory.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right font-mono">
-                    <span className={r.weeksOfSupply < 4 ? "text-[var(--c-error)] font-semibold" : ""}>
-                      {fmtWos(r.weeksOfSupply)}
-                    </span>
-                    <span className="text-[var(--c-text-tertiary)]"> / {fmtWos(r.targetWeeksOfSupply)}</span>
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono font-semibold">
-                    {r.adjustedQuantity > 0 ? r.adjustedQuantity.toLocaleString() : "\u2014"}
-                  </td>
-                  <td className="px-4 py-3 text-[var(--c-text-secondary)]">{r.factory ?? "\u2014"}</td>
-                  <td className="px-4 py-3 text-[var(--c-text-secondary)]">{fmtDate(r.orderByDate)}</td>
-                  <td className="px-4 py-3">
-                    <span className={r.projectedStockoutDate ? "text-[var(--c-error)] font-medium" : "text-[var(--c-text-secondary)]"}>
-                      {fmtDate(r.projectedStockoutDate)}
-                    </span>
-                  </td>
-                </tr>
-              ))
+              filtered.map((r) => {
+                const styles = ROW_STYLES[r.decision] ?? ROW_STYLES.do_not_order;
+                return (
+                  <tr
+                    key={r.id}
+                    className={`border-b border-[var(--c-border-row)] ${styles.bg} hover:bg-[var(--c-page-bg)]`}
+                    style={{ boxShadow: `inset 3px 0 0 ${styles.bar}` }}
+                  >
+                    <td className="px-6 py-3">
+                      <Link href={`/skus/${r.skuId}`} className="text-[var(--c-accent)] font-medium hover:underline">
+                        {r.skuCode}
+                      </Link>
+                      <p className="text-xs text-[var(--c-text-tertiary)] truncate max-w-[180px]">{r.skuName}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <TierBadge tier={r.tier} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant={r.decision as "order" | "watch" | "do_not_order"} />
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {r.weeklyDemand.toFixed(1)}
+                      <span className="text-[var(--c-text-tertiary)]"> /wk</span>
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">{r.onHandInventory.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{r.inboundInventory.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      <span className={r.weeksOfSupply < 4 ? "text-[var(--c-error)] font-semibold" : ""}>
+                        {fmtWos(r.weeksOfSupply)}
+                      </span>
+                      <span className="text-[var(--c-text-tertiary)]"> / {fmtWos(r.targetWeeksOfSupply)}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums font-semibold">
+                      {r.adjustedQuantity > 0 ? r.adjustedQuantity.toLocaleString() : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-[var(--c-text-secondary)]">{r.factory ?? "—"}</td>
+                    <td className="px-4 py-3 text-[var(--c-text-secondary)]">{fmtDate(r.orderByDate)}</td>
+                    <td className="px-4 py-3">
+                      <span className={r.projectedStockoutDate ? "text-[var(--c-error)] font-medium" : "text-[var(--c-text-secondary)]"}>
+                        {fmtDate(r.projectedStockoutDate)}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

@@ -14,7 +14,7 @@ import { PageHeader } from "@/components/page-header";
 
 function fmtWos(v: number | null | undefined) {
   if (v == null) return "—";
-  return `${Number(v).toFixed(1)}w`;
+  return `${Number(v).toFixed(1)}wk`;
 }
 
 function fmtDate(d: Date | string | null) {
