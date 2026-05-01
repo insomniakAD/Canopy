@@ -18,7 +18,7 @@ const PURCHASING_ITEMS = [
 const DATA_ITEMS = [
   { href: "/import", label: "Import Data", icon: "upload" },
   { href: "/tiers", label: "Tier Management", icon: "layers" },
-  { href: "/reports", label: "Leadership Reports", icon: "chart" },
+  { href: "/reports", label: "Leadership View", icon: "chart" },
   { href: "/admin", label: "Admin", icon: "shield" },
 ];
 
