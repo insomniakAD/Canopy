@@ -41,11 +41,11 @@ const ACCENT_COLORS = {
 
 export function StatCard({ label, value, sub, accent = "default", delta }: StatCardProps) {
   return (
-    <div className="bg-[var(--c-card-bg)] rounded-xl border border-[var(--c-border)] px-6 py-5">
+    <div className="bg-[var(--c-card-bg)] rounded-xl border border-[var(--c-border)] px-6 py-3.5">
       <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--c-text-tertiary)]">
         {label}
       </p>
-      <p className={`font-sans text-[3.25rem] leading-none font-extralight tracking-[-0.03em] mt-3 ${ACCENT_COLORS[accent]}`}>
+      <p className={`font-sans text-[3.25rem] leading-none font-extralight tracking-[-0.03em] mt-1 ${ACCENT_COLORS[accent]}`}>
         {value}
       </p>
       {delta && <DeltaIndicator delta={delta} />}

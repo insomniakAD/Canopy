@@ -140,6 +140,22 @@ async function loadLeadershipData() {
       0,
     );
 
+    // ---- Prior inventory snapshot (MoM — ~30 days ago) ------------------
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const priorSnapshotsRaw = await db.$queryRaw<Array<{ sku_id: string; quantity_on_hand: number; factory_cost: string | null }>>`
+      SELECT DISTINCT ON (s.sku_id) s.sku_id, s.quantity_on_hand, k.factory_cost
+      FROM inventory_snapshots s
+      JOIN skus k ON k.id = s.sku_id
+      WHERE k.status = 'active' AND s.snapshot_date <= ${thirtyDaysAgo}
+      ORDER BY s.sku_id, s.snapshot_date DESC
+    `;
+    const priorInventoryOnHand = priorSnapshotsRaw.length > 0
+      ? priorSnapshotsRaw.reduce((s, x) => s + x.quantity_on_hand * Number(x.factory_cost ?? 0), 0)
+      : null;
+    const inventoryDeltaPct = priorInventoryOnHand != null && priorInventoryOnHand > 0
+      ? ((inventoryOnHand - priorInventoryOnHand) / priorInventoryOnHand) * 100
+      : null;
+
     // ---- Current recommendations (for risk + factory concentration) ---
     const recs = await db.reorderRecommendation.findMany({
       where: { isCurrent: true },
@@ -157,6 +173,24 @@ async function loadLeadershipData() {
         const weeklyRev = Number(r.weeklyDemand ?? 0) * Number(r.sku.factoryCost ?? 0);
         return s + weeklyRev * 8; // ~2-month exposure window
       }, 0);
+
+    // Prior run delta for Revenue at Risk
+    const priorRunRow = await db.reorderRecommendation.findFirst({
+      where: { isCurrent: false },
+      orderBy: { calculationDate: "desc" },
+      select: { calculationDate: true },
+    });
+    let revAtRiskDelta: number | null = null;
+    if (priorRunRow?.calculationDate) {
+      const priorRecs = await db.reorderRecommendation.findMany({
+        where: { isCurrent: false, calculationDate: priorRunRow.calculationDate },
+        include: { sku: { select: { factoryCost: true } } },
+      });
+      const priorRevAtRisk = priorRecs
+        .filter((r) => r.decision === "order" && Number(r.weeksOfSupply) < 4)
+        .reduce((s, r) => s + Number(r.weeklyDemand ?? 0) * Number(r.sku.factoryCost ?? 0) * 8, 0);
+      revAtRiskDelta = revAtRisk - priorRevAtRisk;
+    }
 
     // Factory concentration — by % of total order cost
     const factoryTotals = new Map<string, number>();
@@ -193,8 +227,10 @@ async function loadLeadershipData() {
       revenueYtd,
       revenueDeltaPct,
       inventoryOnHand,
+      inventoryDeltaPct,
       openPoCommitment,
       revAtRisk,
+      revAtRiskDelta,
       channelMonthly,
       tierSegments,
       factoryRows,
@@ -224,7 +260,10 @@ export default async function ReportsPage() {
   }
 
   const {
-    revenueYtd, revenueDeltaPct, inventoryOnHand, openPoCommitment, revAtRisk,
+    revenueYtd, revenueDeltaPct,
+    inventoryOnHand, inventoryDeltaPct,
+    openPoCommitment,
+    revAtRisk, revAtRiskDelta,
     channelMonthly, tierSegments, factoryRows, topStockoutRisks, lastRun,
   } = data;
 
@@ -258,18 +297,25 @@ export default async function ReportsPage() {
         <StatCard
           label="Inventory On Hand"
           value={fmtUsd(inventoryOnHand)}
-          sub="warehouse value"
+          delta={inventoryDeltaPct != null ? {
+            value: `${inventoryDeltaPct > 0 ? "+" : ""}${inventoryDeltaPct.toFixed(1)}% MoM`,
+            direction: inventoryDeltaPct > 1 ? "up" : inventoryDeltaPct < -1 ? "down" : "neutral",
+            polarity: "good",
+          } : undefined}
         />
         <StatCard
           label="Open PO Commitment"
           value={fmtUsd(openPoCommitment)}
-          sub="pending receipts"
         />
         <StatCard
           label="Revenue at Risk"
           value={fmtUsd(revAtRisk)}
           accent={revAtRisk > 0 ? "red" : "default"}
-          sub="from stockouts < 4w"
+          delta={revAtRiskDelta != null ? {
+            value: `${revAtRiskDelta > 0 ? "+" : ""}${fmtUsd(Math.abs(revAtRiskDelta))} vs prior`,
+            direction: revAtRiskDelta > 0 ? "up" : revAtRiskDelta < 0 ? "down" : "neutral",
+            polarity: "bad",
+          } : undefined}
         />
       </div>
 

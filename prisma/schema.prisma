@@ -866,6 +866,7 @@ model TierSnapshot {
   skuId                 String   @map("sku_id") @db.Uuid
   runLabel              String   @map("run_label")                 // e.g. "2025", "2025-2"
   tier                  SkuTier                                     // Tier assigned in this run
+  previousTier          SkuTier? @map("previous_tier")              // SKU's effective tier at time of calculation
   trailingRevenueUsd    Decimal  @map("trailing_revenue_usd")      // 12-month trailing revenue
   revenueRankPct        Decimal  @map("revenue_rank_pct")           // Cumulative % of total revenue
   isActive              Boolean  @default(false) @map("is_active")  // Currently applied to SKU

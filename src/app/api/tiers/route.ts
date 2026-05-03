@@ -123,8 +123,11 @@ async function runTierCalculation() {
 
   const skus = await prisma.sku.findMany({
     where: { status: "active" },
-    select: { id: true, skuCode: true },
+    select: { id: true, skuCode: true, tier: true },
   });
+
+  // Capture each SKU's current effective tier as previousTier (audit trail)
+  const currentTierMap = new Map(skus.map((s) => [s.id, s.tier]));
 
   // Calculate trailing revenue per SKU
   const skuRevenues: { skuId: string; revenue: number }[] = [];
@@ -200,6 +203,7 @@ async function runTierCalculation() {
         skuId: r.skuId,
         runLabel: newRunLabel,
         tier: r.tier,
+        previousTier: currentTierMap.get(r.skuId) ?? null,
         trailingRevenueUsd: r.trailingRevenueUsd,
         revenueRankPct: r.revenueRankPct,
         isActive: false,

@@ -189,8 +189,8 @@ export default async function ContainerPlanningPage() {
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         <StatCard label="Factories" value={plans.length} />
-        <StatCard label="Est. Containers" value={totalContainers} accent="blue" sub="rounded up per factory" />
-        <StatCard label="40HQ Fraction" value={fmtNum(totalFractionHQ, 2)} sub="sum across SKUs" />
+        <StatCard label="Est. Containers" value={totalContainers} accent="blue" />
+        <StatCard label="40HQ Fraction" value={fmtNum(totalFractionHQ, 2)} />
         <StatCard label="Total Units" value={fmtInt(totalUnits)} />
         <StatCard label="Total Cost" value={fmtUsd(totalCost)} />
       </div>

@@ -31,11 +31,11 @@ export function DoiDistributionCard({ belowCount, onTargetCount, aboveCount }: D
   let offset = 0;
 
   return (
-    <div className="bg-[var(--c-card-bg)] rounded-xl border border-[var(--c-border)] px-6 py-5">
+    <div className="bg-[var(--c-card-bg)] rounded-xl border border-[var(--c-border)] px-6 py-5 h-full flex flex-col">
       <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--c-text-tertiary)] mb-4">
         DOI Distribution
       </p>
-      <div className="flex items-center gap-6">
+      <div className="flex-1 flex flex-col items-center justify-center gap-5">
         <div className="relative shrink-0">
           <svg width="160" height="160" viewBox="0 0 160 160">
             {/* Background ring */}
@@ -78,7 +78,7 @@ export function DoiDistributionCard({ belowCount, onTargetCount, aboveCount }: D
           </div>
         </div>
 
-        <div className="flex-1 space-y-2.5 text-sm">
+        <div className="w-full space-y-2.5 text-sm">
           <LegendRow color={COLORS.below} label="Below Target" value={belowCount} />
           <LegendRow color={COLORS.onTarget} label="On Target" value={onTargetCount} />
           <LegendRow color={COLORS.above} label="Above Target" value={aboveCount} />
@@ -113,7 +113,7 @@ export function DoiVarianceBars({ points }: DoiVarianceBarsProps) {
     .slice(0, 8);
 
   return (
-    <div className="bg-[var(--c-card-bg)] rounded-xl border border-[var(--c-border)] px-6 py-5">
+    <div className="bg-[var(--c-card-bg)] rounded-xl border border-[var(--c-border)] px-6 py-5 h-full">
       <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--c-text-tertiary)] mb-1">
         Amazon DOI vs Target
       </p>
