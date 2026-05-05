@@ -54,7 +54,7 @@ async function loadRecommendations() {
       where: { isCurrent: true },
       orderBy: [{ decision: "asc" }, { weeksOfSupply: "asc" }],
       include: {
-        sku: { select: { skuCode: true, name: true, tier: true, asin: true } },
+        sku: { select: { skuCode: true, name: true, tier: true, asin: true, factoryCost: true, basePrice: true } },
         recommendedFactory: { select: { name: true, country: true } },
       },
     });
@@ -89,6 +89,16 @@ async function loadRecommendations() {
       factory: r.recommendedFactory?.name ?? null,
       orderByDate: r.recommendedOrderByDate?.toISOString() ?? null,
       projectedStockoutDate: r.projectedStockoutDate?.toISOString() ?? null,
+      grossMarginPct: (() => {
+        const b = Number(r.sku.basePrice ?? 0);
+        const c = Number(r.sku.factoryCost ?? 0);
+        return b > 0 && c > 0 ? ((b - c) / b) * 100 : null;
+      })(),
+      markupPct: (() => {
+        const b = Number(r.sku.basePrice ?? 0);
+        const c = Number(r.sku.factoryCost ?? 0);
+        return b > 0 && c > 0 ? ((b - c) / c) * 100 : null;
+      })(),
     }));
 
     return {

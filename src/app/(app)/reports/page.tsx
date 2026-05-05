@@ -263,6 +263,36 @@ async function loadLeadershipData() {
 
     const forecastSummary = await loadForecastSummary(now);
 
+    // ---- Margin by category -------------------------------------------
+    const skusWithPricing = await db.sku.findMany({
+      where: {
+        factoryCost: { not: null },
+        basePrice: { not: null },
+      },
+      select: { category: true, factoryCost: true, basePrice: true },
+    });
+    type CategoryBucket = { totalMargin: number; totalMarkup: number; count: number };
+    const catBuckets = new Map<string, CategoryBucket>();
+    for (const s of skusWithPricing) {
+      const b = Number(s.basePrice);
+      const c = Number(s.factoryCost);
+      if (b <= 0 || c <= 0) continue;
+      const key = s.category?.trim() || "Uncategorized";
+      const bucket = catBuckets.get(key) ?? { totalMargin: 0, totalMarkup: 0, count: 0 };
+      bucket.totalMargin += ((b - c) / b) * 100;
+      bucket.totalMarkup += ((b - c) / c) * 100;
+      bucket.count += 1;
+      catBuckets.set(key, bucket);
+    }
+    const marginByCategory = Array.from(catBuckets.entries())
+      .map(([category, b]) => ({
+        category,
+        avgMarginPct: b.totalMargin / b.count,
+        avgMarkupPct: b.totalMarkup / b.count,
+        skuCount: b.count,
+      }))
+      .sort((a, b) => b.avgMarginPct - a.avgMarginPct);
+
     return {
       ok: true as const,
       revenueYtd,
@@ -277,6 +307,7 @@ async function loadLeadershipData() {
       factoryRows,
       topStockoutRisks,
       forecastSummary,
+      marginByCategory,
       lastRun: recs[0]?.calculationDate ?? null,
     };
   } catch (err) {
@@ -306,7 +337,7 @@ export default async function ReportsPage() {
     inventoryOnHand, inventoryDeltaPct,
     openPoCommitment,
     revAtRisk, revAtRiskDelta,
-    channelMonthly, tierSegments, factoryRows, topStockoutRisks, forecastSummary, lastRun,
+    channelMonthly, tierSegments, factoryRows, topStockoutRisks, forecastSummary, marginByCategory, lastRun,
   } = data;
 
   return (
@@ -460,6 +491,36 @@ export default async function ReportsPage() {
               </tbody>
             </table>
           </div>
+        </Card>
+      )}
+
+      {/* Margin by Category */}
+      {marginByCategory.length > 0 && (
+        <Card
+          title="Margin by Category"
+          subtitle="Average FOB-cost gross margin and markup per product category (SKUs with both base price and factory cost on file)"
+          className="mt-4"
+        >
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[var(--c-text-secondary)] text-xs uppercase tracking-wide border-b border-[var(--c-border)]">
+                <th className="py-2 font-medium">Category</th>
+                <th className="py-2 font-medium text-right">SKUs</th>
+                <th className="py-2 font-medium text-right">Avg Gross Margin</th>
+                <th className="py-2 font-medium text-right">Avg Markup</th>
+              </tr>
+            </thead>
+            <tbody>
+              {marginByCategory.map((row) => (
+                <tr key={row.category} className="border-b border-[var(--c-border-row)]">
+                  <td className="py-2 font-medium capitalize">{row.category}</td>
+                  <td className="py-2 text-right tabular-nums text-[var(--c-text-secondary)]">{row.skuCount}</td>
+                  <td className="py-2 text-right tabular-nums font-mono">{row.avgMarginPct.toFixed(1)}%</td>
+                  <td className="py-2 text-right tabular-nums font-mono">{row.avgMarkupPct.toFixed(1)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </Card>
       )}
     </div>

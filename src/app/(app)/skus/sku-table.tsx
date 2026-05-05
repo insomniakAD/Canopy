@@ -25,6 +25,8 @@ interface Rec {
   factory: string | null;
   orderByDate: string | null;
   projectedStockoutDate: string | null;
+  grossMarginPct: number | null;
+  markupPct: number | null;
 }
 
 function fmtWos(v: number) {
@@ -104,6 +106,8 @@ export function SkuTable({ recommendations }: { recommendations: Rec[] }) {
       Factory: r.factory ?? "",
       "Order By": r.orderByDate ?? "",
       "Stockout Date": r.projectedStockoutDate ?? "",
+      "Gross Margin %": r.grossMarginPct != null ? r.grossMarginPct.toFixed(1) : "",
+      "Markup %": r.markupPct != null ? r.markupPct.toFixed(1) : "",
     }));
   }, [filtered]);
 
@@ -174,12 +178,14 @@ export function SkuTable({ recommendations }: { recommendations: Rec[] }) {
               <th className="px-4 py-3 font-medium">Factory</th>
               <th className="px-4 py-3 font-medium">Order By</th>
               <th className="px-4 py-3 font-medium">Stockout</th>
+              <th className="px-4 py-3 font-medium text-right">Margin</th>
+              <th className="px-4 py-3 font-medium text-right">Markup</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={11} className="px-6 py-8 text-center text-[var(--c-text-tertiary)]">
+                <td colSpan={13} className="px-6 py-8 text-center text-[var(--c-text-tertiary)]">
                   No SKUs match your filters.
                 </td>
               </tr>
@@ -225,6 +231,12 @@ export function SkuTable({ recommendations }: { recommendations: Rec[] }) {
                       <span className={r.projectedStockoutDate ? "text-[var(--c-error)] font-medium" : "text-[var(--c-text-secondary)]"}>
                         {fmtDate(r.projectedStockoutDate)}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-[var(--c-text-secondary)]">
+                      {r.grossMarginPct != null ? `${r.grossMarginPct.toFixed(1)}%` : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-[var(--c-text-secondary)]">
+                      {r.markupPct != null ? `${r.markupPct.toFixed(1)}%` : "—"}
                     </td>
                   </tr>
                 );

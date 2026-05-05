@@ -39,6 +39,23 @@ function poStatusLabel(s: string) {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function skuStatusLabel(s: string) {
+  const labels: Record<string, string> = {
+    active: "Active",
+    discontinued: "Discontinued",
+    end_of_life: "End of Life",
+    new_item: "New Item",
+  };
+  return labels[s] ?? s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function fmtMargin(base: number | null | undefined, cost: number | null | undefined) {
+  if (base == null || cost == null || base === 0) return null;
+  const b = Number(base);
+  const c = Number(cost);
+  return { margin: ((b - c) / b) * 100, markup: ((b - c) / c) * 100 };
+}
+
 // Data loader -------------------------------------------------------------
 
 async function loadSkuDetail(skuId: string) {
@@ -125,7 +142,25 @@ async function loadSkuDetail(skuId: string) {
     },
   });
 
-  return { sku, rec, demandMetrics, poLines, snapshots, forecasts, overrides, pendingTransition };
+  // Latest PO factory — derived from most recent PO, active SKUs only
+  const latestPoLine =
+    sku.status === "active"
+      ? await db.poLineItem.findFirst({
+          where: { skuId },
+          orderBy: { purchaseOrder: { orderDate: "desc" } },
+          include: {
+            purchaseOrder: {
+              select: {
+                poNumber: true,
+                orderDate: true,
+                factory: { select: { id: true, name: true, country: true, vendorCode: true } },
+              },
+            },
+          },
+        })
+      : null;
+
+  return { sku, rec, demandMetrics, poLines, snapshots, forecasts, overrides, pendingTransition, latestPoLine };
 }
 
 // Page --------------------------------------------------------------------
@@ -153,7 +188,10 @@ export default async function SkuDetailPage({
 
   if (!data) notFound();
 
-  const { sku, rec, demandMetrics, poLines, snapshots, forecasts, overrides, pendingTransition } = data;
+  const { sku, rec, demandMetrics, poLines, snapshots, forecasts, overrides, pendingTransition, latestPoLine } = data;
+
+  const pricing = fmtMargin(sku.basePrice as unknown as number, sku.factoryCost as unknown as number);
+  const latestPoFactory = latestPoLine?.purchaseOrder.factory ?? null;
 
   // Deduplicate snapshots to latest per location
   const latestSnapshots = new Map<string, typeof snapshots[0]>();
@@ -645,7 +683,7 @@ export default async function SkuDetailPage({
             </div>
             <div className="flex justify-between">
               <span className="text-[var(--c-text-secondary)]">Status</span>
-              <span className="capitalize">{sku.status}</span>
+              <span>{skuStatusLabel(sku.status)}</span>
             </div>
             {sku.moq && (
               <div className="flex justify-between">
@@ -656,8 +694,48 @@ export default async function SkuDetailPage({
             {sku.factoryCost && (
               <div className="flex justify-between">
                 <span className="text-[var(--c-text-secondary)]">Factory Cost</span>
-                <span>${Number(sku.factoryCost).toFixed(2)}</span>
+                <span className="font-mono">${Number(sku.factoryCost).toFixed(2)}</span>
               </div>
+            )}
+            {sku.basePrice && (
+              <div className="flex justify-between">
+                <span className="text-[var(--c-text-secondary)]">Base Price</span>
+                <span className="font-mono">${Number(sku.basePrice).toFixed(2)}</span>
+              </div>
+            )}
+            {pricing && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-[var(--c-text-secondary)]">Gross Margin</span>
+                  <span className="font-mono font-medium">{pricing.margin.toFixed(1)}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--c-text-secondary)]">Markup</span>
+                  <span className="font-mono font-medium">{pricing.markup.toFixed(1)}%</span>
+                </div>
+              </>
+            )}
+            {latestPoFactory && (
+              <>
+                <div className="border-t border-[var(--c-border)] my-1" />
+                <div className="flex justify-between">
+                  <span className="text-[var(--c-text-secondary)]">Last PO Vendor</span>
+                  <span className="text-right">
+                    {latestPoFactory.vendorCode ? `${latestPoFactory.vendorCode} · ` : ""}
+                    {latestPoFactory.name}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--c-text-secondary)]">Last PO Country</span>
+                  <span>{latestPoFactory.country ?? "—"}</span>
+                </div>
+                {latestPoLine?.purchaseOrder.orderDate && (
+                  <div className="flex justify-between">
+                    <span className="text-[var(--c-text-secondary)]">Last PO Date</span>
+                    <span className="text-[var(--c-text-tertiary)]">{fmtDate(latestPoLine.purchaseOrder.orderDate)}</span>
+                  </div>
+                )}
+              </>
             )}
             {sku.fclQty40GP != null && (
               <div className="flex justify-between">
