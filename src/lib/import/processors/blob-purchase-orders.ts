@@ -102,25 +102,31 @@ export async function parseBlobPurchaseOrders(
     dateClosed: blobs.porder.fields.indexOf("dateClosed"),
   };
   const cIdx = {
+    ctnrNum: blobs.contdet.fields.indexOf("ctnrNum"),
     orderNum: blobs.contdet.fields.indexOf("orderNum"),
     partNum: blobs.contdet.fields.indexOf("partNum"),
     qtyShip: blobs.contdet.fields.indexOf("qtyShip"),
   };
 
-  // ---- Aggregate cont-det line items by (orderNum, partNum) ----
-  // A SKU may be split across multiple containers — sum qtyShip.
-  type LineKey = string; // `${orderNum}|${partNum}`
+  // ---- Aggregate cont-det line items by (orderNum, partNum, ctnrNum) ----
+  // The container number is preserved so each line lands on its own row.
+  // True splits (same SKU on same PO across two containers) produce two rows.
+  type LineKey = string; // `${orderNum}|${partNum}|${ctnrNum}`
   const lineQtyByKey = new Map<LineKey, number>();
-  const partsByOrder = new Map<string, Set<string>>();
+  const linesByOrder = new Map<string, Array<{ partNum: string; ctnrNum: string }>>();
   for (const row of blobs.contdet.rows) {
     const orderNum = row[cIdx.orderNum] != null ? String(row[cIdx.orderNum]).trim() : "";
     const partNum = row[cIdx.partNum] != null ? String(row[cIdx.partNum]).trim() : "";
+    const ctnrNum = row[cIdx.ctnrNum] != null ? String(row[cIdx.ctnrNum]).trim() : "";
     const qty = asInt(row[cIdx.qtyShip]) ?? 0;
     if (!orderNum || !partNum) continue;
-    const key = `${orderNum}|${partNum}`;
+    const key = `${orderNum}|${partNum}|${ctnrNum}`;
+    const isNewKey = !lineQtyByKey.has(key);
     lineQtyByKey.set(key, (lineQtyByKey.get(key) ?? 0) + qty);
-    if (!partsByOrder.has(orderNum)) partsByOrder.set(orderNum, new Set());
-    partsByOrder.get(orderNum)!.add(partNum);
+    if (isNewKey) {
+      if (!linesByOrder.has(orderNum)) linesByOrder.set(orderNum, []);
+      linesByOrder.get(orderNum)!.push({ partNum, ctnrNum });
+    }
   }
 
   // ---- Pre-fetch factories by vendorCode (porder.vendorNum → Factory) ----
@@ -142,7 +148,7 @@ export async function parseBlobPurchaseOrders(
 
   // ---- Pre-fetch SKUs (every partNum referenced anywhere) ----
   const allParts = new Set<string>();
-  for (const set of partsByOrder.values()) for (const p of set) allParts.add(p);
+  for (const lines of linesByOrder.values()) for (const l of lines) allParts.add(l.partNum);
   const skuRecords = allParts.size
     ? await db.sku.findMany({
         where: { skuCode: { in: Array.from(allParts) } },
@@ -218,12 +224,17 @@ export async function parseBlobPurchaseOrders(
     const estimatedArrival = parseDateField(row[pIdx.dateNeeded]);
 
     // ---- Build line items from cont-det aggregation ----
-    const parts = partsByOrder.get(orderNum);
+    // One line per (PO, SKU, Container). True split case: same (PO, SKU)
+    // landing in two containers produces two rows.
+    const lines = linesByOrder.get(orderNum);
     const lineItems: PurchaseOrdersPayload["pos"][number]["lineItems"] = [];
     let lineBlocked = false;
 
-    if (parts) {
-      for (const partNum of parts) {
+    if (lines) {
+      // Track which SKUs we've already attributed a transition consumption
+      // to within this PO (only the first line per SKU consumes the transition).
+      const transitionConsumedForSku = new Set<string>();
+      for (const { partNum, ctnrNum } of lines) {
         const sku = skuByCode.get(partNum);
         if (!sku) {
           errors.push({
@@ -238,14 +249,16 @@ export async function parseBlobPurchaseOrders(
           continue;
         }
 
-        const qtyOrdered = lineQtyByKey.get(`${orderNum}|${partNum}`) ?? 0;
+        const qtyOrdered = lineQtyByKey.get(`${orderNum}|${partNum}|${ctnrNum}`) ?? 0;
         if (qtyOrdered <= 0) continue; // skip empty container slots
 
         const qtyReceived = status === "received" ? qtyOrdered : 0;
 
-        // Vendor transition auto-consume key
+        // Vendor transition auto-consume key — attach to first line per SKU only
         const transitionKey = `${sku.id}|${factoryId}`;
         const transition = transitionBySkuAndFactory.get(transitionKey) ?? null;
+        const shouldConsume = transition && !transitionConsumedForSku.has(sku.id);
+        if (shouldConsume) transitionConsumedForSku.add(sku.id);
 
         lineItems.push({
           skuId: sku.id,
@@ -253,8 +266,9 @@ export async function parseBlobPurchaseOrders(
           quantityOrdered: qtyOrdered,
           quantityReceived: qtyReceived,
           unitCostUsd: null,  // Per design — manual import owns factory cost
-          pendingTransitionId: transition?.id ?? null,
-          transitionData: transition
+          containerNumber: ctnrNum || null,
+          pendingTransitionId: shouldConsume ? transition.id : null,
+          transitionData: shouldConsume && transition
             ? {
                 newDefaultFactoryId: factoryId,
                 newUnitCost: transition.newUnitCost != null ? Number(transition.newUnitCost) : null,

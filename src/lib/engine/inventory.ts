@@ -96,14 +96,17 @@ export async function calculateInventoryForSku(
       purchaseOrder: {
         include: { factory: true },
       },
+      container: true,
     },
   });
 
+  // Container ETA is authoritative when present; fall back to PO-level ETA
+  // for legacy lines (containerId = null) until they age out.
   const inboundShipments: InboundShipment[] = inboundLines.map((line) => ({
     poNumber: line.purchaseOrder.poNumber,
     poStatus: line.purchaseOrder.status,
     skuQuantity: line.quantityOrdered - line.quantityReceived,
-    estimatedArrival: line.purchaseOrder.estimatedArrivalDate,
+    estimatedArrival: line.container?.estimatedArrivalDate ?? line.purchaseOrder.estimatedArrivalDate,
     factoryName: line.purchaseOrder.factory.name,
   }));
 

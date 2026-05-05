@@ -87,9 +87,13 @@ async function loadSkuDetail(skuId: string) {
         select: {
           poNumber: true,
           status: true,
+          lotNumber: true,
           estimatedArrivalDate: true,
           factory: { select: { name: true } },
         },
+      },
+      container: {
+        select: { containerNumber: true, estimatedArrivalDate: true },
       },
     },
   });
@@ -501,9 +505,11 @@ export default async function SkuDetailPage({
               <thead>
                 <tr className="text-left text-[var(--c-text-secondary)] text-xs uppercase tracking-wide border-b border-[var(--c-border)]">
                   <th className="py-2 font-medium">PO #</th>
+                  <th className="py-2 font-medium">Lot #</th>
                   <th className="py-2 font-medium">Status</th>
                   <th className="py-2 font-medium text-right">Qty</th>
                   <th className="py-2 font-medium">Factory</th>
+                  <th className="py-2 font-medium">Container</th>
                   <th className="py-2 font-medium">ETA</th>
                 </tr>
               </thead>
@@ -511,12 +517,14 @@ export default async function SkuDetailPage({
                 {poLines.map((pl) => (
                   <tr key={pl.id} className="border-b border-[var(--c-border-row)]">
                     <td className="py-2 font-medium">{pl.purchaseOrder.poNumber}</td>
+                    <td className="py-2 text-[var(--c-text-secondary)] font-mono text-xs">{pl.purchaseOrder.lotNumber ?? "\u2014"}</td>
                     <td className="py-2">
                       <Badge variant="neutral">{poStatusLabel(pl.purchaseOrder.status)}</Badge>
                     </td>
                     <td className="py-2 text-right font-mono">{fmtInt(pl.quantityOrdered)}</td>
                     <td className="py-2 text-[var(--c-text-secondary)]">{pl.purchaseOrder.factory?.name ?? "\u2014"}</td>
-                    <td className="py-2 text-[var(--c-text-secondary)]">{fmtDate(pl.purchaseOrder.estimatedArrivalDate)}</td>
+                    <td className="py-2 text-[var(--c-text-secondary)] font-mono text-xs">{pl.container?.containerNumber ?? "\u2014"}</td>
+                    <td className="py-2 text-[var(--c-text-secondary)]">{fmtDate(pl.container?.estimatedArrivalDate ?? pl.purchaseOrder.estimatedArrivalDate)}</td>
                   </tr>
                 ))}
               </tbody>

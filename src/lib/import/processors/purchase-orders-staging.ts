@@ -43,6 +43,8 @@ interface StagedPoLineItem {
   quantityOrdered: number;
   quantityReceived: number;
   unitCostUsd: number | null;
+  /** Container number (ctnrNum) this line ships in. Null for legacy / Excel imports. */
+  containerNumber: string | null;
   /** Pending transition id to auto-consume on commit */
   pendingTransitionId: string | null;
   transitionData: {
@@ -221,6 +223,7 @@ async function parseToPayload(
         quantityOrdered: qtyOrdered,
         quantityReceived: qtyReceived,
         unitCostUsd: unitCost,
+        containerNumber: null,  // Excel template has no container info
         pendingTransitionId: transition?.id ?? null,
         transitionData: transition
           ? {
@@ -260,6 +263,25 @@ async function writeFromPayload(
   let imported = 0;
 
   await db.$transaction(async (tx) => {
+    // Pre-collect unique container numbers across all lines and upsert them
+    // up front so per-line upserts can resolve by id.
+    const containerNumbers = new Set<string>();
+    for (const po of payload.pos) {
+      for (const line of po.lineItems) {
+        if (line.containerNumber) containerNumbers.add(line.containerNumber);
+      }
+    }
+    const containerIdByNumber = new Map<string, string>();
+    for (const num of containerNumbers) {
+      const c = await tx.container.upsert({
+        where: { containerNumber: num },
+        update: {},
+        create: { containerNumber: num },
+        select: { id: true },
+      });
+      containerIdByNumber.set(num, c.id);
+    }
+
     for (const po of payload.pos) {
       const upsertedPo = await tx.purchaseOrder.upsert({
         where: { poNumber: po.poNumber },
@@ -278,8 +300,14 @@ async function writeFromPayload(
       });
 
       for (const line of po.lineItems) {
+        const containerId = line.containerNumber
+          ? containerIdByNumber.get(line.containerNumber) ?? null
+          : null;
+
+        // Match key: (po, sku, container). Lines split across containers get
+        // separate rows. Legacy Excel imports use containerId=null.
         const existingLine = await tx.poLineItem.findFirst({
-          where: { poId: upsertedPo.id, skuId: line.skuId },
+          where: { poId: upsertedPo.id, skuId: line.skuId, containerId },
         });
 
         if (existingLine) {
@@ -289,7 +317,7 @@ async function writeFromPayload(
           });
         } else {
           await tx.poLineItem.create({
-            data: { poId: upsertedPo.id, skuId: line.skuId, quantityOrdered: line.quantityOrdered, quantityReceived: line.quantityReceived, unitCostUsd: line.unitCostUsd },
+            data: { poId: upsertedPo.id, skuId: line.skuId, containerId, quantityOrdered: line.quantityOrdered, quantityReceived: line.quantityReceived, unitCostUsd: line.unitCostUsd },
           });
         }
 

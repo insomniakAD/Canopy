@@ -328,13 +328,19 @@ model PendingVendorTransition {
 }
 
 /// A purchase order placed with a factory.
-/// One PO goes to one factory, but may contain many SKUs (line items).
+/// Business rule: one PO = one Lot# = one SKU at large quantity. The schema
+/// keeps PoLineItem (one row per SKU per PO) so legacy multi-line POs and the
+/// rare overshipment-split case both remain expressible.
 model PurchaseOrder {
   id                   String        @id @default(uuid()) @db.Uuid
   poNumber             String        @unique @map("po_number")    // Winsome PO number
+  lotNumber            String?       @unique @map("lot_number")    // PO LOT# — one Lot per PO
   factoryId            String        @map("factory_id") @db.Uuid
   status               PoStatus      @default(draft)
   orderDate            DateTime?     @map("order_date") @db.Date
+  factoryReadyDate     DateTime?     @map("factory_ready_date") @db.Date  // factory production complete
+  dateClosed           DateTime?     @map("date_closed") @db.Date          // PO close date (after receipt + reconciliation)
+  // Deprecated PO-level fields (kept during migration window — Container is authoritative when PoLineItem.containerId is set)
   estimatedShipDate    DateTime?     @map("estimated_ship_date") @db.Date
   estimatedArrivalDate DateTime?     @map("estimated_arrival_date") @db.Date
   actualArrivalDate    DateTime?     @map("actual_arrival_date") @db.Date
@@ -357,11 +363,14 @@ model PurchaseOrder {
 }
 
 /// Individual SKU lines within a purchase order.
-/// If PO #1234 has 3 different products, there are 3 line items.
+/// In practice 1 PO = 1 SKU = 1 line, but the schema allows multiple lines for
+/// historical multi-line POs and the rare overshipment-split case where the
+/// same (po, sku) lands in two containers (two rows, different containerId).
 model PoLineItem {
   id              String  @id @default(uuid()) @db.Uuid
   poId            String  @map("po_id") @db.Uuid
   skuId           String  @map("sku_id") @db.Uuid
+  containerId     String? @map("container_id") @db.Uuid    // Container this line ships in (null = legacy or pre-shipment)
   quantityOrdered Int     @map("quantity_ordered")
   quantityReceived Int    @default(0) @map("quantity_received")
   unitCostUsd     Decimal? @map("unit_cost_usd")
@@ -373,8 +382,41 @@ model PoLineItem {
   // Relationships
   purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id])
   sku           Sku           @relation(fields: [skuId], references: [id])
+  container     Container?    @relation(fields: [containerId], references: [id])
 
+  @@index([containerId])
   @@map("po_line_items")
+}
+
+/// A shipping container holding one or more POs (so one or more SKUs).
+/// Receiving# is applied at the container level when it arrives at the warehouse.
+model Container {
+  id                   String          @id @default(uuid()) @db.Uuid
+  containerNumber      String          @unique @map("container_number")     // ctnrNum from cont-det.json
+  containerType        ContainerType?  @map("container_type")               // 40GP / 40HQ — populated when known
+  status               ContainerStatus @default(in_transit)
+  estimatedShipDate    DateTime?       @map("estimated_ship_date") @db.Date
+  estimatedArrivalDate DateTime?       @map("estimated_arrival_date") @db.Date
+  actualArrivalDate    DateTime?       @map("actual_arrival_date") @db.Date
+  receivingNumber      String?         @map("receiving_number")             // RCVG# applied at warehouse
+  notes                String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  poLineItems PoLineItem[]
+
+  @@index([estimatedArrivalDate])
+  @@index([status])
+  @@map("containers")
+}
+
+enum ContainerStatus {
+  in_transit  // shipped, not yet arrived
+  at_port     // arrived at port, not yet at warehouse
+  received    // arrived at warehouse, RCVG# applied
+  cancelled
 }
 
 /// Physical or logical locations where inventory is held.
