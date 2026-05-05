@@ -11,7 +11,6 @@ import { SearchBar } from "@/components/search-bar";
 const PURCHASING_ITEMS = [
   { href: "/", label: "Dashboard", icon: "grid" },
   { href: "/skus", label: "SKU Planning", icon: "package" },
-  { href: "/in-transit", label: "In-Transit", icon: "truck" },
   { href: "/amazon-doi", label: "Amazon DOI", icon: "signal" },
 ];
 
