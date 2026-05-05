@@ -35,6 +35,45 @@ function monthLabel(d: Date) {
 
 // Data loader -------------------------------------------------------------
 
+async function loadForecastSummary(now: Date) {
+  try {
+    const pastForecasts = await db.amazonForecast.findMany({
+      where: { weekEndDate: { lt: now } },
+      select: { skuId: true, forecastUnits: true },
+    });
+    if (pastForecasts.length === 0) return null;
+
+    const skuIds = [...new Set(pastForecasts.map((f) => f.skuId))];
+    const salesAgg = await db.salesRecord.findMany({
+      where: {
+        skuId: { in: skuIds },
+        channel: { in: ["amazon_1p", "amazon_di"] },
+      },
+      select: { skuId: true, quantity: true },
+    });
+    const actualBySku = new Map<string, number>();
+    for (const s of salesAgg) {
+      actualBySku.set(s.skuId, (actualBySku.get(s.skuId) ?? 0) + s.quantity);
+    }
+    const forecastBySku = new Map<string, number>();
+    for (const f of pastForecasts) {
+      forecastBySku.set(f.skuId, (forecastBySku.get(f.skuId) ?? 0) + Number(f.forecastUnits));
+    }
+
+    let totalForecast = 0;
+    let totalActual = 0;
+    for (const [skuId, forecast] of forecastBySku) {
+      totalForecast += forecast;
+      totalActual += actualBySku.get(skuId) ?? 0;
+    }
+    const overallAccuracy = totalForecast > 0 ? Math.round((totalActual / totalForecast) * 100) : 0;
+
+    return { skuCount: skuIds.length, overallAccuracy };
+  } catch {
+    return null;
+  }
+}
+
 async function loadLeadershipData() {
   try {
     const now = new Date();
@@ -222,6 +261,8 @@ async function loadLeadershipData() {
         stockoutDate: r.projectedStockoutDate?.toISOString() ?? null,
       }));
 
+    const forecastSummary = await loadForecastSummary(now);
+
     return {
       ok: true as const,
       revenueYtd,
@@ -235,6 +276,7 @@ async function loadLeadershipData() {
       tierSegments,
       factoryRows,
       topStockoutRisks,
+      forecastSummary,
       lastRun: recs[0]?.calculationDate ?? null,
     };
   } catch (err) {
@@ -264,7 +306,7 @@ export default async function ReportsPage() {
     inventoryOnHand, inventoryDeltaPct,
     openPoCommitment,
     revAtRisk, revAtRiskDelta,
-    channelMonthly, tierSegments, factoryRows, topStockoutRisks, lastRun,
+    channelMonthly, tierSegments, factoryRows, topStockoutRisks, forecastSummary, lastRun,
   } = data;
 
   return (
@@ -339,7 +381,40 @@ export default async function ReportsPage() {
         </div>
       </div>
 
-      {/* Operational detail (kept for buyer reference) */}
+      {/* Forecast Accuracy */}
+      {forecastSummary && (
+        <Card
+          title="Forecast Accuracy"
+          subtitle={`Amazon demand forecast vs. actual sales — ${forecastSummary.skuCount} SKUs evaluated`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <div>
+                <p className="text-2xl font-semibold tabular-nums">
+                  <span className={
+                    forecastSummary.overallAccuracy >= 90 && forecastSummary.overallAccuracy <= 110
+                      ? "text-[var(--c-success-text)]"
+                      : forecastSummary.overallAccuracy >= 75 && forecastSummary.overallAccuracy <= 125
+                      ? "text-[var(--c-warning-text)]"
+                      : "text-[var(--c-error)]"
+                  }>
+                    {forecastSummary.overallAccuracy}%
+                  </span>
+                </p>
+                <p className="text-xs text-[var(--c-text-tertiary)] mt-0.5">Overall accuracy (100% = perfect)</p>
+              </div>
+            </div>
+            <Link
+              href="/forecast-accuracy"
+              className="text-sm text-[var(--c-accent)] hover:underline font-medium"
+            >
+              View full report →
+            </Link>
+          </div>
+        </Card>
+      )}
+
+      {/* Top Stockout Risks */}
       {topStockoutRisks.length > 0 && (
         <Card
           title="Top Stockout Risks"

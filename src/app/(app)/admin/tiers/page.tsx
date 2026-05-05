@@ -110,8 +110,8 @@ export default async function AdminTiersPage({
   return (
     <div>
       <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
-        Revenue-based tiering — A = top 25% revenue, B = top 50%, C = top 75%, LP = bottom 25%.
-        Run annually.
+        Tiers are assigned annually by admins via CSV upload. Upload a file with SKU codes and their
+        assigned tiers (A, B, C, or LP), preview the changes, then apply to activate.
       </p>
 
       {/* Current distribution */}

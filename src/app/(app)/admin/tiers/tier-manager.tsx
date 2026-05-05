@@ -78,7 +78,39 @@ export function TierManager({ runs, skus, resultRows, selectedMonths, latestRunL
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [tierFilter, setTierFilter] = useState<string>("All");
 
-  const activeRun = runs.find((r) => r.isActive);
+  // Upload state
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadState, setUploadState] = useState<"idle" | "uploading">("idle");
+  const [uploadPreview, setUploadPreview] = useState<{
+    runLabel: string;
+    tierCounts: Record<string, number>;
+    totalSkus: number;
+    skipped: number;
+  } | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  async function handleUpload() {
+    if (!uploadFile) return;
+    setUploadState("uploading");
+    setUploadError(null);
+    setUploadPreview(null);
+    const form = new FormData();
+    form.append("file", uploadFile);
+    try {
+      const res = await fetch("/api/tiers/upload", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) {
+        setUploadError(data.error ?? "Upload failed");
+      } else {
+        setUploadPreview(data);
+        setUploadFile(null);
+      }
+    } catch {
+      setUploadError("Network error");
+    } finally {
+      setUploadState("idle");
+    }
+  }
 
   async function handleAction(action: string, runLabel?: string) {
     setLoading(true);
@@ -92,6 +124,7 @@ export function TierManager({ runs, skus, resultRows, selectedMonths, latestRunL
       const data = await res.json();
       if (res.ok && data.success) {
         setMessage({ text: data.message, type: "success" });
+        setUploadPreview(null);
         router.refresh();
       } else {
         setMessage({ text: data.error ?? "Action failed", type: "error" });
@@ -125,45 +158,97 @@ export function TierManager({ runs, skus, resultRows, selectedMonths, latestRunL
 
   return (
     <div className="space-y-6">
-      {/* Actions */}
-      <Card title="Tier Actions" subtitle="Calculate tiers from trailing 12-month revenue. Run once per year.">
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={() => handleAction("calculate")}
-            disabled={loading}
-            className="px-5 py-2.5 bg-[var(--c-accent)] text-white text-sm font-medium rounded-lg hover:bg-[var(--c-accent-hover)] disabled:opacity-50 transition-colors"
-          >
-            {loading ? "Calculating…" : "Calculate Tiers"}
-          </button>
-          {runs.length > 0 && !runs[0].isActive && (
+      {/* Upload */}
+      <Card title="Upload Tier Assignment" subtitle="Upload a CSV with SKU Code and Tier columns. Done once per year by admins.">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="flex items-center gap-2 px-4 py-2 border border-[var(--c-border)] rounded-lg text-sm text-[var(--c-text-secondary)] hover:bg-[var(--c-surface)] cursor-pointer transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+              {uploadFile ? uploadFile.name : "Choose CSV file"}
+              <input
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={(e) => { setUploadFile(e.target.files?.[0] ?? null); setUploadPreview(null); setUploadError(null); }}
+              />
+            </label>
             <button
-              onClick={() => handleAction("apply", runs[0].runLabel)}
-              disabled={loading}
-              className="px-5 py-2.5 bg-[var(--c-success)] text-white text-sm font-medium rounded-lg hover:opacity-90 disabled:opacity-50 transition-colors"
+              onClick={handleUpload}
+              disabled={!uploadFile || uploadState === "uploading"}
+              className="px-5 py-2 bg-[var(--c-accent)] text-white text-sm font-medium rounded-lg hover:bg-[var(--c-accent-hover)] disabled:opacity-40 transition-colors"
             >
-              Apply &ldquo;{runs[0].runLabel}&rdquo;
+              {uploadState === "uploading" ? "Uploading…" : "Upload & Preview"}
             </button>
+            <a
+              href="/templates/TierUploadTemplate.csv"
+              download
+              className="text-sm text-[var(--c-accent)] hover:underline"
+            >
+              Download template →
+            </a>
+          </div>
+
+          <p className="text-xs text-[var(--c-text-tertiary)]">
+            CSV must have columns: <code className="font-mono bg-[var(--c-surface)] px-1 rounded">SKU Code</code> and{" "}
+            <code className="font-mono bg-[var(--c-surface)] px-1 rounded">Tier</code> (values: A, B, C, or LP).
+          </p>
+
+          {uploadError && (
+            <div className="px-4 py-3 rounded-lg text-sm font-medium bg-[var(--c-error-bg)] text-[var(--c-error-text)]">
+              {uploadError}
+            </div>
           )}
-          {activeRun && (
-            <button
-              onClick={() => handleAction("rollback")}
-              disabled={loading}
-              className="px-5 py-2.5 border border-[var(--c-border)] text-[var(--c-text-secondary)] text-sm font-medium rounded-lg hover:bg-[var(--c-surface)] disabled:opacity-50 transition-colors"
-            >
-              Rollback
-            </button>
+
+          {uploadPreview && (
+            <div className="border border-[var(--c-border)] rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--c-text-primary)]">
+                    Preview — Run &quot;{uploadPreview.runLabel}&quot;
+                  </p>
+                  <p className="text-xs text-[var(--c-text-tertiary)] mt-0.5">
+                    {uploadPreview.totalSkus} SKUs assigned
+                    {uploadPreview.skipped > 0 && `, ${uploadPreview.skipped} rows skipped (unrecognized SKU codes)`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {(["A", "B", "C", "LP"] as const).map((t) => (
+                    <span key={t} className="text-xs font-mono">
+                      <span className="font-semibold">{t}</span> {uploadPreview.tierCounts[t] ?? 0}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleAction("apply", uploadPreview.runLabel)}
+                  disabled={loading}
+                  className="px-4 py-2 bg-[var(--c-success)] text-white text-sm font-medium rounded-lg hover:opacity-90 disabled:opacity-50 transition-colors"
+                >
+                  {loading ? "Applying…" : "Apply This Run"}
+                </button>
+                <button
+                  onClick={() => setUploadPreview(null)}
+                  className="px-4 py-2 border border-[var(--c-border)] text-[var(--c-text-secondary)] text-sm font-medium rounded-lg hover:bg-[var(--c-surface)] transition-colors"
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
+          )}
+
+          {message && (
+            <div className={`px-4 py-3 rounded-lg text-sm font-medium ${
+              message.type === "success"
+                ? "bg-[var(--c-success-bg)] text-[var(--c-success-text)]"
+                : "bg-[var(--c-error-bg)] text-[var(--c-error-text)]"
+            }`}>
+              {message.text}
+            </div>
           )}
         </div>
-
-        {message && (
-          <div className={`mt-4 px-4 py-3 rounded-lg text-sm font-medium ${
-            message.type === "success"
-              ? "bg-[var(--c-success-bg)] text-[var(--c-success-text)]"
-              : "bg-[var(--c-error-bg)] text-[var(--c-error-text)]"
-          }`}>
-            {message.text}
-          </div>
-        )}
       </Card>
 
       {/* Results table */}
@@ -344,10 +429,10 @@ export function TierManager({ runs, skus, resultRows, selectedMonths, latestRunL
       <div className="bg-[var(--c-page-bg)] border border-[var(--c-border)] rounded-xl px-6 py-4">
         <p className="text-sm text-[var(--c-text-secondary)]">
           <strong className="text-[var(--c-text-body)]">How tiers work:</strong>{" "}
-          Tiers are calculated from 12-month trailing revenue. A-tier SKUs (top 25% of revenue) get
-          the highest inventory targets. Tiers are set annually — not recalculated every purchasing run.
-          All historical runs are stored for audit. The results table revenue and units columns reflect
-          the selected period for context only — tier assignment always uses 12 months.
+          Tiers are assigned annually by admins via CSV upload. A-tier SKUs get the highest inventory
+          targets. Upload a CSV with SKU Code and Tier columns, preview the run, then apply to activate.
+          All historical runs are stored for audit and can be re-applied at any time.
+          The results table revenue and units columns reflect the selected period for context only.
         </p>
       </div>
     </div>

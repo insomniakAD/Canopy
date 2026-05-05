@@ -66,7 +66,7 @@ export function generateExplanation(
   // --- Calculation breakdown (only if ordering) ---
   if (rec.decision !== "do_not_order") {
     lines.push(`HOW THE QUANTITY WAS CALCULATED:`);
-    lines.push(`  Lead time: ${rec.leadTimeDays} days`);
+    lines.push(`  Lead time: ${Math.round(rec.leadTimeDays / 7)} weeks`);
     lines.push(`  Demand during lead time: ${rec.leadTimeDemand.toLocaleString()} units`);
     lines.push(`  Projected inventory when new order arrives: ${rec.projectedInventoryAtArrival.toLocaleString()} units`);
     lines.push(`  Target inventory level: ${rec.requiredInventoryLevel.toLocaleString()} units (${round(rec.targetWeeksOfSupply)} weeks + safety stock of ${rec.safetyStock.toLocaleString()} units)`);
@@ -143,9 +143,9 @@ export function generateExplanation(
       if (timing.urgency === "overdue") {
         lines.push(`TIMING: OVERDUE — should have been ordered by ${orderByStr}.`);
       } else if (timing.urgency === "urgent") {
-        lines.push(`TIMING: URGENT — place order by ${orderByStr} (${timing.daysUntilOrderBy} days).`);
+        lines.push(`TIMING: URGENT — place order by ${orderByStr} (${((timing.daysUntilOrderBy ?? 0) / 7).toFixed(1)} weeks).`);
       } else {
-        lines.push(`TIMING: Place order by ${orderByStr} (${timing.daysUntilOrderBy} days).`);
+        lines.push(`TIMING: Place order by ${orderByStr} (${((timing.daysUntilOrderBy ?? 0) / 7).toFixed(1)} weeks).`);
       }
     }
   }

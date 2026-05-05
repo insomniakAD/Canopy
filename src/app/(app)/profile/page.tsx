@@ -15,10 +15,8 @@ const DEFAULT_VIEW_OPTIONS = [
   { value: "/", label: "Dashboard" },
   { value: "/import", label: "Import Data" },
   { value: "/skus", label: "SKU Planning" },
-  { value: "/containers", label: "Container Planning" },
   { value: "/amazon-doi", label: "Amazon DOI" },
-  { value: "/forecast-accuracy", label: "Forecast Accuracy" },
-  { value: "/tiers", label: "Tier Management" },
+  { value: "/tiers", label: "Tier Uploads" },
   { value: "/reports", label: "Leadership Reports" },
   { value: "/settings", label: "Settings" },
 ];

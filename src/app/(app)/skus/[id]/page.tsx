@@ -606,7 +606,7 @@ export default async function SkuDetailPage({
               </div>
               <div className="flex justify-between">
                 <span className="text-[var(--c-text-secondary)]">Lead Time</span>
-                <span>{rec.leadTimeDays} days</span>
+                <span>{Math.round(rec.leadTimeDays / 7)} weeks</span>
               </div>
               {rec.fclFractionHQ != null && Number(rec.fclFractionHQ) > 0 && (
                 <div className="flex justify-between">

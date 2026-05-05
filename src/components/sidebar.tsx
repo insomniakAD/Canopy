@@ -11,8 +11,6 @@ const PURCHASING_ITEMS = [
   { href: "/", label: "Dashboard", icon: "grid" },
   { href: "/skus", label: "SKU Planning", icon: "package" },
   { href: "/amazon-doi", label: "Amazon DOI", icon: "signal" },
-  { href: "/containers", label: "Container Planning", icon: "truck" },
-  { href: "/forecast-accuracy", label: "Forecast Accuracy", icon: "target" },
 ];
 
 const DATA_ITEMS = [

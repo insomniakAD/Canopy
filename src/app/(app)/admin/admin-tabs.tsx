@@ -8,7 +8,7 @@ const TABS = [
   { href: "/admin/uploads", label: "Uploads" },
   { href: "/admin/review", label: "Review Inbox" },
   { href: "/admin/sync", label: "Live Sync" },
-  { href: "/admin/tiers", label: "Tier Management" },
+  { href: "/admin/tiers", label: "Tier Uploads" },
 ];
 
 export function AdminTabs() {

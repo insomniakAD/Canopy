@@ -334,13 +334,13 @@ export function SettingsEditor({
       {/* ---------------------------------------------------------------- */}
       {/* Tier targeting rules                                             */}
       {/* ---------------------------------------------------------------- */}
-      <Card title="SKU Tier Rules" subtitle="How many days of supply to target for each tier">
+      <Card title="SKU Tier Rules" subtitle="How many weeks of supply to target for each tier">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-[var(--c-text-secondary)] text-xs uppercase tracking-wide border-b border-[var(--c-border)]">
               <th className="py-2 font-medium">Tier</th>
-              <th className="py-2 font-medium text-right">Target Days of Supply</th>
-              <th className="py-2 font-medium text-right">Target Weeks</th>
+              <th className="py-2 font-medium text-right">Target Weeks of Supply</th>
+              <th className="py-2 font-medium text-right">Raw Days</th>
               <th className="py-2 font-medium text-right">Amazon DOI Target</th>
               <th className="py-2 font-medium">Description</th>
             </tr>
@@ -349,7 +349,10 @@ export function SettingsEditor({
             {tierRules.map((r) => (
               <tr key={r.id} className="border-b border-[var(--c-border-row)]">
                 <td className="py-3 font-semibold">Tier {r.tier}</td>
-                <td className="py-3 text-right">
+                <td className="py-3 text-right font-mono">
+                  {(r.targetDaysOfSupply / 7).toFixed(1)}
+                </td>
+                <td className="py-3 text-right text-[var(--c-text-tertiary)]">
                   <EditableCell
                     {...cellProps}
                     table="sku_tier_rules"
@@ -358,9 +361,6 @@ export function SettingsEditor({
                     value={r.targetDaysOfSupply}
                     editing={isEditing("sku_tier_rules", r.id, "targetDaysOfSupply")}
                   />
-                </td>
-                <td className="py-3 text-right font-mono text-[var(--c-text-secondary)]">
-                  {(r.targetDaysOfSupply / 7).toFixed(1)}
                 </td>
                 <td className="py-3 text-right">
                   {r.amazonTargetDoi != null ? (
@@ -386,13 +386,13 @@ export function SettingsEditor({
       {/* ---------------------------------------------------------------- */}
       {/* Safety stock rules                                               */}
       {/* ---------------------------------------------------------------- */}
-      <Card title="Safety Stock Rules" subtitle="Extra buffer stock days by tier to prevent stockouts">
+      <Card title="Safety Stock Rules" subtitle="Extra buffer stock weeks by tier to prevent stockouts">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-[var(--c-text-secondary)] text-xs uppercase tracking-wide border-b border-[var(--c-border)]">
               <th className="py-2 font-medium">Tier</th>
-              <th className="py-2 font-medium text-right">Safety Stock Days</th>
-              <th className="py-2 font-medium text-right">Safety Weeks</th>
+              <th className="py-2 font-medium text-right">Safety Stock Weeks</th>
+              <th className="py-2 font-medium text-right">Raw Days</th>
               <th className="py-2 font-medium">Description</th>
             </tr>
           </thead>
@@ -400,7 +400,10 @@ export function SettingsEditor({
             {safetyRules.map((r) => (
               <tr key={r.id} className="border-b border-[var(--c-border-row)]">
                 <td className="py-3 font-semibold">Tier {r.tier}</td>
-                <td className="py-3 text-right">
+                <td className="py-3 text-right font-mono">
+                  {(r.safetyStockDays / 7).toFixed(1)}
+                </td>
+                <td className="py-3 text-right text-[var(--c-text-tertiary)]">
                   <EditableCell
                     {...cellProps}
                     table="safety_stock_rules"
@@ -409,9 +412,6 @@ export function SettingsEditor({
                     value={r.safetyStockDays}
                     editing={isEditing("safety_stock_rules", r.id, "safetyStockDays")}
                   />
-                </td>
-                <td className="py-3 text-right font-mono text-[var(--c-text-secondary)]">
-                  {(r.safetyStockDays / 7).toFixed(1)}
                 </td>
                 <td className="py-3 text-[var(--c-text-secondary)]">{r.description ?? "\u2014"}</td>
               </tr>
@@ -423,7 +423,7 @@ export function SettingsEditor({
       {/* ---------------------------------------------------------------- */}
       {/* Lead time rules                                                  */}
       {/* ---------------------------------------------------------------- */}
-      <Card title="Lead Time Rules" subtitle="Default lead time breakdown by source country (in days)">
+      <Card title="Lead Time Rules" subtitle="Default lead time breakdown by source country (in weeks)">
         <div className="overflow-x-auto -mx-6">
           <table className="w-full text-sm">
             <thead>
