@@ -110,7 +110,7 @@ async function loadSkuDetail(skuId: string) {
         },
       },
       container: {
-        select: { containerNumber: true, estimatedArrivalDate: true },
+        select: { id: true, estimatedArrivalDate: true },
       },
     },
   });
@@ -538,36 +538,56 @@ export default async function SkuDetailPage({
         <Card title="Inbound Shipments" subtitle="Open purchase orders for this SKU">
           {poLines.length === 0 ? (
             <p className="text-sm text-[var(--c-text-tertiary)]">No open purchase orders.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-[var(--c-text-secondary)] text-xs uppercase tracking-wide border-b border-[var(--c-border)]">
-                  <th className="py-2 font-medium">PO #</th>
-                  <th className="py-2 font-medium">Lot #</th>
-                  <th className="py-2 font-medium">Status</th>
-                  <th className="py-2 font-medium text-right">Qty</th>
-                  <th className="py-2 font-medium">Factory</th>
-                  <th className="py-2 font-medium">Container</th>
-                  <th className="py-2 font-medium">ETA</th>
-                </tr>
-              </thead>
-              <tbody>
-                {poLines.map((pl) => (
-                  <tr key={pl.id} className="border-b border-[var(--c-border-row)]">
-                    <td className="py-2 font-medium">{pl.purchaseOrder.poNumber}</td>
-                    <td className="py-2 text-[var(--c-text-secondary)] font-mono text-xs">{pl.purchaseOrder.lotNumber ?? "\u2014"}</td>
-                    <td className="py-2">
-                      <Badge variant="neutral">{poStatusLabel(pl.purchaseOrder.status)}</Badge>
-                    </td>
-                    <td className="py-2 text-right font-mono">{fmtInt(pl.quantityOrdered)}</td>
-                    <td className="py-2 text-[var(--c-text-secondary)]">{pl.purchaseOrder.factory?.name ?? "\u2014"}</td>
-                    <td className="py-2 text-[var(--c-text-secondary)] font-mono text-xs">{pl.container?.containerNumber ?? "\u2014"}</td>
-                    <td className="py-2 text-[var(--c-text-secondary)]">{fmtDate(pl.container?.estimatedArrivalDate ?? pl.purchaseOrder.estimatedArrivalDate)}</td>
+          ) : (() => {
+            // SKU-split-across-containers: same PO# with multiple distinct containers on this SKU (rare overshipment case).
+            const containersByPo = new Map<string, Set<string>>();
+            for (const pl of poLines) {
+              const key = pl.purchaseOrder.poNumber;
+              const cid = pl.container?.id ?? "__none__";
+              if (!containersByPo.has(key)) containersByPo.set(key, new Set());
+              containersByPo.get(key)!.add(cid);
+            }
+            return (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[var(--c-text-secondary)] text-xs uppercase tracking-wide border-b border-[var(--c-border)]">
+                    <th className="py-2 font-medium">PO #</th>
+                    <th className="py-2 font-medium">Lot #</th>
+                    <th className="py-2 font-medium">Status</th>
+                    <th className="py-2 font-medium text-right">Qty</th>
+                    <th className="py-2 font-medium">Factory</th>
+                    <th className="py-2 font-medium">ETA</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                </thead>
+                <tbody>
+                  {poLines.map((pl) => {
+                    const isSplit = (containersByPo.get(pl.purchaseOrder.poNumber)?.size ?? 0) > 1;
+                    return (
+                      <tr key={pl.id} className="border-b border-[var(--c-border-row)]">
+                        <td className="py-2 font-medium">
+                          <span className="inline-flex items-center gap-1.5">
+                            {pl.purchaseOrder.poNumber}
+                            {isSplit && (
+                              <span title="This SKU is split across multiple containers on this PO (overshipment).">
+                                <Badge variant="warning">Split</Badge>
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                        <td className="py-2 text-[var(--c-text-secondary)] font-mono text-xs">{pl.purchaseOrder.lotNumber ?? "\u2014"}</td>
+                        <td className="py-2">
+                          <Badge variant="neutral">{poStatusLabel(pl.purchaseOrder.status)}</Badge>
+                        </td>
+                        <td className="py-2 text-right font-mono">{fmtInt(pl.quantityOrdered)}</td>
+                        <td className="py-2 text-[var(--c-text-secondary)]">{pl.purchaseOrder.factory?.name ?? "\u2014"}</td>
+                        <td className="py-2 text-[var(--c-text-secondary)]">{fmtDate(pl.container?.estimatedArrivalDate ?? pl.purchaseOrder.estimatedArrivalDate)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            );
+          })()}
         </Card>
 
         {/* ───────── AMAZON FORECAST COMPARISON ───────── */}

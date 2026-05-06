@@ -55,13 +55,6 @@ function statusVariant(s: string): "success" | "warning" | "error" | "neutral" {
   }
 }
 
-function containerTypeLabel(t: string | null | undefined) {
-  if (!t) return null;
-  if (t === "forty_gp") return "40GP";
-  if (t === "forty_hq") return "40HQ";
-  return t;
-}
-
 async function loadPo(id: string) {
   return db.purchaseOrder.findUnique({
     where: { id },
@@ -70,17 +63,9 @@ async function loadPo(id: string) {
       lineItems: {
         include: {
           sku: { select: { id: true, skuCode: true, name: true } },
-          container: {
-            select: {
-              id: true,
-              containerNumber: true,
-              containerType: true,
-              status: true,
-              estimatedArrivalDate: true,
-              actualArrivalDate: true,
-              receivingNumber: true,
-            },
-          },
+          // Container ETA is needed to roll up an accurate per-line ETA;
+          // container number / receiving# / type are import-side and not surfaced.
+          container: { select: { estimatedArrivalDate: true } },
         },
         orderBy: [{ skuId: "asc" }],
       },
@@ -101,23 +86,13 @@ export default async function PoDetailPage({
   const totalReceived = po.lineItems.reduce((s, l) => s + l.quantityReceived, 0);
   const receivedPct = totalOrdered > 0 ? (totalReceived / totalOrdered) * 100 : 0;
 
-  // Containers used by this PO (deduped, preserve order of first appearance)
-  const seen = new Set<string>();
-  const containers: Array<NonNullable<(typeof po.lineItems)[number]["container"]>> = [];
-  for (const line of po.lineItems) {
-    if (line.container && !seen.has(line.container.id)) {
-      seen.add(line.container.id);
-      containers.push(line.container);
-    }
-  }
-
-  // Earliest container ETA (or PO-level fallback for legacy lines)
-  const containerEtas = containers
-    .map((c) => c.estimatedArrivalDate)
+  // Earliest line-level ETA (rolled up from container ETAs; PO-level fallback for legacy lines).
+  const lineEtas = po.lineItems
+    .map((l) => l.container?.estimatedArrivalDate)
     .filter((d): d is Date => d != null);
   const effectiveEta =
-    containerEtas.length > 0
-      ? new Date(Math.min(...containerEtas.map((d) => d.getTime())))
+    lineEtas.length > 0
+      ? new Date(Math.min(...lineEtas.map((d) => d.getTime())))
       : po.estimatedArrivalDate;
 
   const today = new Date();
@@ -157,16 +132,12 @@ export default async function PoDetailPage({
       </div>
 
       {/* Stat strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
         <StatCard label="Units Ordered" value={fmtInt(totalOrdered)} />
         <StatCard
           label="Units Received"
           value={`${fmtInt(totalReceived)} (${receivedPct.toFixed(0)}%)`}
           accent={receivedPct >= 100 ? "green" : receivedPct > 0 ? "amber" : "default"}
-        />
-        <StatCard
-          label="Containers"
-          value={containers.length === 0 ? "—" : String(containers.length)}
         />
         <StatCard label={etaCardLabel} value={etaCardValue} />
       </div>
@@ -183,38 +154,6 @@ export default async function PoDetailPage({
         </div>
       </Card>
 
-      {/* Containers */}
-      {containers.length > 0 && (
-        <Card title="Containers" subtitle={`${containers.length} on this PO`} className="mb-6">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-[var(--c-text-secondary)] text-xs uppercase tracking-wide border-b border-[var(--c-border)]">
-                <th className="py-2 font-medium">Container</th>
-                <th className="py-2 font-medium">Type</th>
-                <th className="py-2 font-medium">Status</th>
-                <th className="py-2 font-medium">ETA</th>
-                <th className="py-2 font-medium">Arrived</th>
-                <th className="py-2 font-medium">Receiving #</th>
-              </tr>
-            </thead>
-            <tbody>
-              {containers.map((c) => (
-                <tr key={c.id} className="border-b border-[var(--c-border-row)]">
-                  <td className="py-2 font-mono">{c.containerNumber}</td>
-                  <td className="py-2">{containerTypeLabel(c.containerType) ?? "—"}</td>
-                  <td className="py-2">
-                    <Badge variant={statusVariant(c.status)}>{statusLabel(c.status)}</Badge>
-                  </td>
-                  <td className="py-2">{fmtDate(c.estimatedArrivalDate)}</td>
-                  <td className="py-2 text-[var(--c-text-secondary)]">{fmtDate(c.actualArrivalDate)}</td>
-                  <td className="py-2 font-mono text-xs">{c.receivingNumber ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
-
       {/* Line items */}
       <Card
         title="Line Items"
@@ -230,7 +169,6 @@ export default async function PoDetailPage({
                 <th className="py-2 font-medium">SKU</th>
                 <th className="py-2 font-medium text-right">Ordered</th>
                 <th className="py-2 font-medium text-right">Received</th>
-                <th className="py-2 font-medium">Container</th>
                 <th className="py-2 font-medium">ETA</th>
                 <th className="py-2 font-medium text-right">Unit Cost</th>
               </tr>
@@ -255,11 +193,6 @@ export default async function PoDetailPage({
                     <td className="py-2 text-right font-mono text-[var(--c-text-secondary)]">
                       {fmtInt(line.quantityReceived)}
                     </td>
-                    <td className="py-2 font-mono text-xs">
-                      {line.container?.containerNumber ?? (
-                        <span className="text-[var(--c-text-tertiary)]">—</span>
-                      )}
-                    </td>
                     <td className="py-2 text-[var(--c-text-secondary)]">{fmtDate(eta)}</td>
                     <td className="py-2 text-right font-mono text-[var(--c-text-secondary)]">
                       {fmtUsd(line.unitCostUsd as unknown as number | null)}
@@ -273,7 +206,7 @@ export default async function PoDetailPage({
                 <td className="py-2 text-right text-[var(--c-text-secondary)]">Total</td>
                 <td className="py-2 text-right font-mono font-semibold">{fmtInt(totalOrdered)}</td>
                 <td className="py-2 text-right font-mono font-semibold">{fmtInt(totalReceived)}</td>
-                <td colSpan={3}></td>
+                <td colSpan={2}></td>
               </tr>
             </tfoot>
           </table>
