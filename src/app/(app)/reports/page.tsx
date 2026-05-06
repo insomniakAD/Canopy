@@ -159,6 +159,9 @@ async function loadLeadershipData(filters: {
         amazon_di: Math.round(b.amazon_di),
         domestic: Math.round(b.domestic),
       }));
+    const monthlyRevenueTrend = channelMonthly.map(
+      (m) => m.amazon_1p + m.amazon_di + m.domestic,
+    );
 
     // ---- Tier revenue mix --------------------------------------------
     const tierRows = await db.salesRecord.findMany({
@@ -337,6 +340,7 @@ async function loadLeadershipData(filters: {
       isCurrentYear,
       revenueYtd,
       revenueDeltaPct,
+      monthlyRevenueTrend,
       inventoryOnHand,
       inventoryDeltaPct,
       openPoCommitment,
@@ -389,7 +393,7 @@ export default async function ReportsPage({
 
   const {
     year, isCurrentYear,
-    revenueYtd, revenueDeltaPct,
+    revenueYtd, revenueDeltaPct, monthlyRevenueTrend,
     inventoryOnHand, inventoryDeltaPct,
     openPoCommitment,
     revAtRisk, revAtRiskDelta,
@@ -417,6 +421,9 @@ export default async function ReportsPage({
         <StatCard
           label={revenueLabel}
           value={fmtUsd(revenueYtd)}
+          trend={monthlyRevenueTrend.length > 1
+            ? { data: monthlyRevenueTrend, polarity: "good" }
+            : undefined}
           delta={revenueDeltaPct != null ? {
             value: `${revenueDeltaPct > 0 ? "+" : ""}${revenueDeltaPct.toFixed(1)}% ${deltaLabel}`,
             direction: revenueDeltaPct >= 0 ? "up" : "down",
