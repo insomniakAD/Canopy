@@ -1,3 +1,5 @@
+import { Sparkline } from "./sparkline";
+
 interface CardProps {
   title?: string;
   subtitle?: string;
@@ -7,7 +9,7 @@ interface CardProps {
 
 export function Card({ title, subtitle, children, className = "" }: CardProps) {
   return (
-    <div className={`bg-[var(--c-card-bg)] rounded-xl border border-[var(--c-border)] ${className}`}>
+    <div className={`bg-[var(--c-card-bg)] rounded-lg border border-[var(--c-border)] ${className}`}>
       {(title || subtitle) && (
         <div className="px-6 py-4 border-b border-[var(--c-border)]">
           {title && <h2 className="text-base font-semibold text-[var(--c-text-primary)]">{title}</h2>}
@@ -29,6 +31,10 @@ interface StatCardProps {
     direction: "up" | "down" | "neutral";
     polarity?: "good" | "bad"; // up could be good (revenue) or bad (risk)
   };
+  trend?: {
+    data: number[];
+    polarity?: "good" | "bad" | "neutral";
+  };
 }
 
 const ACCENT_COLORS = {
@@ -39,18 +45,23 @@ const ACCENT_COLORS = {
   default: "text-[var(--c-text-primary)]",
 };
 
-export function StatCard({ label, value, sub, accent = "default", delta }: StatCardProps) {
+export function StatCard({ label, value, sub, accent = "default", delta, trend }: StatCardProps) {
   return (
-    <div className="bg-[var(--c-card-bg)] rounded-xl border border-[var(--c-border)] px-6 py-3.5">
+    <div className="bg-[var(--c-card-bg)] rounded-lg border border-[var(--c-border)] px-5 py-4">
       <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--c-text-tertiary)]">
         {label}
       </p>
-      <p className={`font-sans text-[3.25rem] leading-none font-extralight tracking-[-0.03em] mt-1 ${ACCENT_COLORS[accent]}`}>
+      <p className={`text-4xl font-medium tracking-tight tabular-nums leading-none mt-2 ${ACCENT_COLORS[accent]}`}>
         {value}
       </p>
+      {trend && trend.data.length > 0 && (
+        <div className="mt-3 -mx-1">
+          <Sparkline data={trend.data} polarity={trend.polarity ?? "neutral"} height={32} />
+        </div>
+      )}
       {delta && <DeltaIndicator delta={delta} />}
       {sub && (
-        <p className="text-xs text-[var(--c-text-tertiary)] mt-2">{sub}</p>
+        <p className="text-xs text-[var(--c-text-tertiary)] mt-1.5">{sub}</p>
       )}
     </div>
   );
@@ -67,8 +78,8 @@ function DeltaIndicator({ delta }: { delta: NonNullable<StatCardProps["delta"]> 
       : "text-[var(--c-error)]";
   const arrow = delta.direction === "up" ? "↑" : delta.direction === "down" ? "↓" : "—";
   return (
-    <p className={`text-xs font-light tabular-nums mt-2 ${color}`}>
-      {delta.value} {arrow}
+    <p className={`text-xs font-medium tabular-nums mt-2 ${color}`}>
+      {arrow} {delta.value}
     </p>
   );
 }

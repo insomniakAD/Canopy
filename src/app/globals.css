@@ -2,11 +2,14 @@
 
 /* ========================================================================
    CANOPY DESIGN TOKENS
-   Muted blue-gray palette · Kensington Blue accent
-   Inter (body/UI) + DM Sans (logo lockup only)
+   Neutral slate text · Kensington Blue accent (reserved for interaction)
+   Geist Sans (body + display)
    ======================================================================== */
 
 :root {
+  /* Font aliases */
+  --font-display: var(--font-body);
+
   /* Layout */
   --c-page-bg: #f0f2f5;
   --c-card-bg: #ffffff;
@@ -16,11 +19,11 @@
   --c-border: #e2e8f2;
   --c-border-row: #eef0f4;
 
-  /* Text */
-  --c-text-primary: #3a4b6b;     /* Ink — Kensington Blue */
-  --c-text-secondary: #4d607f;   /* Mid — Newburyport Blue */
-  --c-text-tertiary: #94a3b8;    /* Muted */
-  --c-text-body: #4d607f;
+  /* Text — neutral slate so the accent navy stands out where it earns it */
+  --c-text-primary: #1e293b;     /* slate-800 */
+  --c-text-secondary: #475569;   /* slate-600 */
+  --c-text-tertiary: #94a3b8;    /* slate-400 */
+  --c-text-body: #475569;
 
   /* Brand palette ramp (constant names; values shift in dark) */
   --c-navy: #1b2a3b;
@@ -73,6 +76,13 @@
   --c-sidebar-icon: rgba(255, 255, 255, 0.35);
   --c-sidebar-active: #3a4b6b;
   --c-sidebar-hover: rgba(255, 255, 255, 0.05);
+
+  /* Trend (sparklines, decorative trend lines — softer than status colors) */
+  --c-trend-up: #5cb085;
+  --c-trend-up-fill: rgba(92, 176, 133, 0.12);
+  --c-trend-down: #d96e62;
+  --c-trend-down-fill: rgba(217, 110, 98, 0.12);
+  --c-trend-neutral: #94a3b8;
 
   /* Form controls */
   --c-input-bg: #ffffff;
@@ -145,6 +155,13 @@
   --c-sidebar-icon: rgba(255, 255, 255, 0.3);
   --c-sidebar-active: #3a4b6b;
   --c-sidebar-hover: rgba(255, 255, 255, 0.04);
+
+  /* Trend (sparklines, decorative trend lines) */
+  --c-trend-up: #5cb085;
+  --c-trend-up-fill: rgba(92, 176, 133, 0.10);
+  --c-trend-down: #d96e62;
+  --c-trend-down-fill: rgba(217, 110, 98, 0.10);
+  --c-trend-neutral: #64748b;
 
   /* Form controls */
   --c-input-bg: #1b2a3b;

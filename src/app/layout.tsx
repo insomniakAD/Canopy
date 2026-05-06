@@ -1,18 +1,10 @@
 import type { Metadata } from "next";
-import { Inter, DM_Sans } from "next/font/google";
+import { Geist } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
+const geist = Geist({
   variable: "--font-body",
   subsets: ["latin"],
-  weight: ["200", "300", "400", "500", "600"],
-  display: "swap",
-});
-
-const dmSans = DM_Sans({
-  variable: "--font-display",
-  subsets: ["latin"],
-  weight: ["400", "500"],
   display: "swap",
 });
 
@@ -39,7 +31,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${dmSans.variable} h-full antialiased`}
+      className={`${geist.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>
