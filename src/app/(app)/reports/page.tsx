@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { type SalesChannel, type SkuTier } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { Card, StatCard, TierBadge } from "@/components/ui";
 import { PageHeader } from "@/components/page-header";
@@ -5,6 +7,7 @@ import Link from "next/link";
 import { StockoutExport } from "./report-export";
 import { ChannelMixChart, ChannelTrendChart, type ChannelMonthly } from "./leadership-charts";
 import { TierRevenueMixCard, FactoryConcentrationCard } from "./leadership-mix";
+import { FilterPillsBar } from "./filter-pills";
 
 // Helpers -----------------------------------------------------------------
 
@@ -74,35 +77,64 @@ async function loadForecastSummary(now: Date) {
   }
 }
 
-async function loadLeadershipData() {
+async function loadLeadershipData(filters: {
+  channel: string;
+  tier: string;
+  period: string;
+}) {
   try {
     const now = new Date();
-    const startOfYear = new Date(now.getFullYear(), 0, 1);
-    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-    const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+
+    // Derive date window from period (year)
+    const year = parseInt(filters.period, 10);
+    const isCurrentYear = year === now.getFullYear();
+    const startDate = new Date(year, 0, 1);
+    const endDate = isCurrentYear ? now : new Date(year, 11, 31, 23, 59, 59);
+
+    // Prior-year comparison window
+    const priorStart = new Date(year - 1, 0, 1);
+    const priorEnd = isCurrentYear
+      ? new Date(year - 1, now.getMonth(), now.getDate())
+      : new Date(year - 1, 11, 31, 23, 59, 59);
+
+    // Channel and tier filters
+    const channelFilter: SalesChannel[] | undefined =
+      filters.channel === "amazon" ? ["amazon_1p", "amazon_di", "amazon_df"] :
+      filters.channel === "domestic" ? ["domestic"] :
+      undefined;
+    const tierFilter: SkuTier | undefined = filters.tier === "all" ? undefined : filters.tier as SkuTier;
 
     // ---- Sales rollups -------------------------------------------------
     const salesYtd = await db.salesRecord.findMany({
-      where: { saleDate: { gte: startOfYear } },
+      where: {
+        saleDate: { gte: startDate, lte: endDate },
+        ...(channelFilter ? { channel: { in: channelFilter } } : {}),
+        ...(tierFilter ? { sku: { tier: tierFilter } } : {}),
+      },
       select: { revenueUsd: true, channel: true },
     });
     const revenueYtd = salesYtd.reduce((s, r) => s + Number(r.revenueUsd ?? 0), 0);
 
-    // Prior year YTD for delta
-    const priorStart = new Date(now.getFullYear() - 1, 0, 1);
-    const priorEnd = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
     const priorYtdAgg = await db.salesRecord.aggregate({
-      where: { saleDate: { gte: priorStart, lte: priorEnd } },
+      where: {
+        saleDate: { gte: priorStart, lte: priorEnd },
+        ...(channelFilter ? { channel: { in: channelFilter } } : {}),
+        ...(tierFilter ? { sku: { tier: tierFilter } } : {}),
+      },
       _sum: { revenueUsd: true },
     });
-    const revenuePriorYtd = Number(priorYtdAgg._sum.revenueUsd ?? 0);
+    const revenuePriorYtd = Number(priorYtdAgg._sum?.revenueUsd ?? 0);
     const revenueDeltaPct = revenuePriorYtd > 0
       ? ((revenueYtd - revenuePriorYtd) / revenuePriorYtd) * 100
       : null;
 
-    // ---- Channel mix monthly (last 6 months) ---------------------------
+    // ---- Channel mix monthly ------------------------------------------
     const monthlyRows = await db.salesRecord.findMany({
-      where: { saleDate: { gte: sixMonthsAgo } },
+      where: {
+        saleDate: { gte: startDate, lte: endDate },
+        ...(channelFilter ? { channel: { in: channelFilter } } : {}),
+        ...(tierFilter ? { sku: { tier: tierFilter } } : {}),
+      },
       select: { revenueUsd: true, channel: true, periodStartDate: true },
     });
     const monthBuckets = new Map<string, { amazon_1p: number; amazon_di: number; domestic: number; date: Date }>();
@@ -114,7 +146,6 @@ async function loadLeadershipData() {
         date: new Date(d.getFullYear(), d.getMonth(), 1),
       };
       const rev = Number(row.revenueUsd ?? 0);
-      // Bucket DF in with 1P; DI separate; domestic alone
       if (row.channel === "amazon_1p" || row.channel === "amazon_df") bucket.amazon_1p += rev;
       else if (row.channel === "amazon_di") bucket.amazon_di += rev;
       else if (row.channel === "domestic") bucket.domestic += rev;
@@ -129,9 +160,13 @@ async function loadLeadershipData() {
         domestic: Math.round(b.domestic),
       }));
 
-    // ---- Tier revenue mix (last 12 months) ----------------------------
+    // ---- Tier revenue mix --------------------------------------------
     const tierRows = await db.salesRecord.findMany({
-      where: { saleDate: { gte: twelveMonthsAgo } },
+      where: {
+        saleDate: { gte: startDate, lte: endDate },
+        ...(channelFilter ? { channel: { in: channelFilter } } : {}),
+        ...(tierFilter ? { sku: { tier: tierFilter } } : {}),
+      },
       select: { revenueUsd: true, sku: { select: { tier: true } } },
     });
     const tierTotals: Record<string, number> = { A: 0, B: 0, C: 0, LP: 0 };
@@ -147,8 +182,7 @@ async function loadLeadershipData() {
         pct: tierTotalSum > 0 ? ((tierTotals[tier] ?? 0) / tierTotalSum) * 100 : 0,
       }));
 
-    // ---- Inventory on-hand value --------------------------------------
-    // Use latest snapshot per SKU
+    // ---- Inventory on-hand value (not filtered — balance sheet metric) ----
     const latestSnapshots = await db.$queryRaw<Array<{ sku_id: string; quantity_on_hand: number; factory_cost: string | null }>>`
       SELECT DISTINCT ON (s.sku_id) s.sku_id, s.quantity_on_hand, k.factory_cost
       FROM inventory_snapshots s
@@ -161,7 +195,7 @@ async function loadLeadershipData() {
       0,
     );
 
-    // ---- Open PO commitment -------------------------------------------
+    // ---- Open PO commitment (not filtered — financial position metric) ----
     const openPos = await db.purchaseOrder.findMany({
       where: { status: { in: ["ordered", "in_production", "on_water", "at_port"] } },
       include: {
@@ -179,7 +213,7 @@ async function loadLeadershipData() {
       0,
     );
 
-    // ---- Prior inventory snapshot (MoM — ~30 days ago) ------------------
+    // ---- Prior inventory snapshot (MoM) ----------------------------------
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const priorSnapshotsRaw = await db.$queryRaw<Array<{ sku_id: string; quantity_on_hand: number; factory_cost: string | null }>>`
       SELECT DISTINCT ON (s.sku_id) s.sku_id, s.quantity_on_hand, k.factory_cost
@@ -195,7 +229,7 @@ async function loadLeadershipData() {
       ? ((inventoryOnHand - priorInventoryOnHand) / priorInventoryOnHand) * 100
       : null;
 
-    // ---- Current recommendations (for risk + factory concentration) ---
+    // ---- Current recommendations ----------------------------------------
     const recs = await db.reorderRecommendation.findMany({
       where: { isCurrent: true },
       include: {
@@ -205,12 +239,15 @@ async function loadLeadershipData() {
       orderBy: { weeksOfSupply: "asc" },
     });
 
-    // Revenue at risk — orderRecs with WoS < 4: estimate annual revenue at risk
-    const revAtRisk = recs
+    // Apply tier filter to recs in-memory (recs are not channel-specific)
+    const filteredRecs = tierFilter ? recs.filter((r) => r.sku.tier === tierFilter) : recs;
+
+    // Revenue at risk
+    const revAtRisk = filteredRecs
       .filter((r) => r.decision === "order" && Number(r.weeksOfSupply) < 4)
       .reduce((s, r) => {
         const weeklyRev = Number(r.weeklyDemand ?? 0) * Number(r.sku.factoryCost ?? 0);
-        return s + weeklyRev * 8; // ~2-month exposure window
+        return s + weeklyRev * 8;
       }, 0);
 
     // Prior run delta for Revenue at Risk
@@ -223,17 +260,17 @@ async function loadLeadershipData() {
     if (priorRunRow?.calculationDate) {
       const priorRecs = await db.reorderRecommendation.findMany({
         where: { isCurrent: false, calculationDate: priorRunRow.calculationDate },
-        include: { sku: { select: { factoryCost: true } } },
+        include: { sku: { select: { factoryCost: true, tier: true } } },
       });
       const priorRevAtRisk = priorRecs
-        .filter((r) => r.decision === "order" && Number(r.weeksOfSupply) < 4)
+        .filter((r) => r.decision === "order" && Number(r.weeksOfSupply) < 4 && (!tierFilter || r.sku.tier === tierFilter))
         .reduce((s, r) => s + Number(r.weeklyDemand ?? 0) * Number(r.sku.factoryCost ?? 0) * 8, 0);
       revAtRiskDelta = revAtRisk - priorRevAtRisk;
     }
 
-    // Factory concentration — by % of total order cost
+    // Factory concentration
     const factoryTotals = new Map<string, number>();
-    for (const r of recs.filter((r) => r.decision === "order")) {
+    for (const r of filteredRecs.filter((r) => r.decision === "order")) {
       const factory = r.recommendedFactory?.name ?? "Unassigned";
       const cost = r.adjustedQuantity * Number(r.sku.factoryCost ?? 0);
       factoryTotals.set(factory, (factoryTotals.get(factory) ?? 0) + cost);
@@ -246,8 +283,8 @@ async function loadLeadershipData() {
       }))
       .sort((a, b) => b.pct - a.pct);
 
-    // Top stockout risks (kept from previous page, lower in hierarchy)
-    const topStockoutRisks = recs
+    // Top stockout risks
+    const topStockoutRisks = filteredRecs
       .filter((r) => r.decision === "order" && Number(r.weeksOfSupply) < 6)
       .slice(0, 8)
       .map((r) => ({
@@ -268,6 +305,7 @@ async function loadLeadershipData() {
       where: {
         factoryCost: { not: null },
         basePrice: { not: null },
+        ...(tierFilter ? { tier: tierFilter } : {}),
       },
       select: { category: true, factoryCost: true, basePrice: true },
     });
@@ -295,6 +333,8 @@ async function loadLeadershipData() {
 
     return {
       ok: true as const,
+      year,
+      isCurrentYear,
       revenueYtd,
       revenueDeltaPct,
       inventoryOnHand,
@@ -318,8 +358,23 @@ async function loadLeadershipData() {
 
 // Page --------------------------------------------------------------------
 
-export default async function ReportsPage() {
-  const data = await loadLeadershipData();
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ channel?: string; tier?: string; period?: string }>;
+}) {
+  const sp = await searchParams;
+  const now = new Date();
+  const currentYear = now.getFullYear();
+
+  const channel = sp.channel ?? "all";
+  const tier = sp.tier ?? "all";
+  const periodRaw = sp.period ? parseInt(sp.period, 10) : NaN;
+  const period = !isNaN(periodRaw) && periodRaw >= 2020 && periodRaw <= currentYear
+    ? String(periodRaw)
+    : String(currentYear);
+
+  const data = await loadLeadershipData({ channel, tier, period });
 
   if (!data.ok) {
     return (
@@ -333,6 +388,7 @@ export default async function ReportsPage() {
   }
 
   const {
+    year, isCurrentYear,
     revenueYtd, revenueDeltaPct,
     inventoryOnHand, inventoryDeltaPct,
     openPoCommitment,
@@ -340,29 +396,29 @@ export default async function ReportsPage() {
     channelMonthly, tierSegments, factoryRows, topStockoutRisks, forecastSummary, marginByCategory, lastRun,
   } = data;
 
+  const revenueLabel = isCurrentYear ? `Revenue ${year} YTD` : `Revenue ${year}`;
+  const deltaLabel = isCurrentYear ? "vs. same period prior year" : "vs. prior year";
+
   return (
     <div>
       <PageHeader title="Leadership View" />
 
       <p className="text-sm text-[var(--c-text-tertiary)] mb-6">
         Revenue, channel mix, and supply posture.
-        {lastRun && ` Data as of ${fmtDate(lastRun)}.`}
+        {lastRun && ` Recommendations as of ${fmtDate(lastRun)}.`}
       </p>
 
-      {/* Filter row */}
-      <div className="flex items-center gap-3 mb-6 flex-wrap">
-        <FilterPill label="All Channels" />
-        <FilterPill label="All Tiers" />
-        <FilterPill label={`YTD ${new Date().getFullYear()}`} />
-      </div>
+      <Suspense>
+        <FilterPillsBar channel={channel} tier={tier} period={period} />
+      </Suspense>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard
-          label="Revenue YTD"
+          label={revenueLabel}
           value={fmtUsd(revenueYtd)}
           delta={revenueDeltaPct != null ? {
-            value: `${revenueDeltaPct > 0 ? "+" : ""}${revenueDeltaPct.toFixed(1)}%`,
+            value: `${revenueDeltaPct > 0 ? "+" : ""}${revenueDeltaPct.toFixed(1)}% ${deltaLabel}`,
             direction: revenueDeltaPct >= 0 ? "up" : "down",
             polarity: "good",
           } : undefined}
@@ -524,16 +580,5 @@ export default async function ReportsPage() {
         </Card>
       )}
     </div>
-  );
-}
-
-function FilterPill({ label }: { label: string }) {
-  return (
-    <button className="flex items-center gap-2 px-4 py-1.5 rounded-full border border-[var(--c-border)] bg-[var(--c-card-bg)] text-sm text-[var(--c-text-secondary)] hover:bg-[var(--c-surface)] transition-colors">
-      {label}
-      <svg className="w-3.5 h-3.5 text-[var(--c-text-tertiary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 9l-7 7-7-7" />
-      </svg>
-    </button>
   );
 }
