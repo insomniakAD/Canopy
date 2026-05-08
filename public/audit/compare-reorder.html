@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Canopy Reorder Math — Audit & Comparison</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --surface-2: #f5f5f4;
+    --border: #e7e5e4;
+    --border-strong: #d6d3d1;
+    --text: #1c1917;
+    --text-2: #57534e;
+    --text-3: #a8a29e;
+    --accent: #1e293b;
+    --accent-soft: #e2e8f0;
+    --good: #15803d;
+    --good-bg: #dcfce7;
+    --bad: #b91c1c;
+    --bad-bg: #fee2e2;
+    --warn: #b45309;
+    --warn-bg: #fef3c7;
+    --info: #1d4ed8;
+    --info-bg: #dbeafe;
+    --code-bg: #1c1917;
+    --code-text: #f5f5f4;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+  }
+  code, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+  /* Hero */
+  .hero {
+    padding: 80px 0 48px;
+    background:
+      radial-gradient(ellipse at top right, rgba(30,41,59,0.04), transparent 60%),
+      linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%);
+    border-bottom: 1px solid var(--border);
+  }
+  .hero-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+  .hero-eyebrow::before {
+    content: '';
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent);
+  }
+  .hero h1 {
+    font-size: clamp(32px, 5vw, 52px);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin-bottom: 20px;
+    max-width: 900px;
+  }
+  .hero-sub {
+    font-size: 19px;
+    color: var(--text-2);
+    max-width: 720px;
+    margin-bottom: 32px;
+  }
+  .hero-meta {
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: var(--text-3);
+  }
+  .hero-meta span strong { color: var(--text); font-weight: 500; }
+
+  /* Section */
+  section { padding: 64px 0; border-bottom: 1px solid var(--border); }
+  section:last-child { border-bottom: none; }
+  .section-eyebrow {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin-bottom: 12px;
+  }
+  .section h2 {
+    font-size: clamp(26px, 3.5vw, 36px);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 16px;
+  }
+  .section-lede {
+    font-size: 17px;
+    color: var(--text-2);
+    max-width: 760px;
+    margin-bottom: 40px;
+  }
+
+  /* Two-column compare */
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  @media (max-width: 880px) { .compare { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+  }
+  .panel-header {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .panel-header.wds { background: linear-gradient(180deg, #fef3c7 0%, #fef9e7 100%); }
+  .panel-header.canopy { background: linear-gradient(180deg, #dcfce7 0%, #ecfdf5 100%); }
+  .panel-title {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 15px; font-weight: 600;
+  }
+  .badge {
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  .badge.wds { background: rgba(180,83,9,0.12); color: var(--warn); }
+  .badge.canopy { background: rgba(21,128,61,0.12); color: var(--good); }
+  .badge.neutral { background: var(--accent-soft); color: var(--accent); }
+  .panel-body { padding: 24px 20px; }
+
+  /* Steps list */
+  .steps { display: flex; flex-direction: column; gap: 14px; }
+  .step {
+    display: flex; gap: 14px;
+    align-items: flex-start;
+  }
+  .step-num {
+    flex-shrink: 0;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600;
+    background: var(--accent); color: white;
+  }
+  .step-num.wds { background: var(--warn); }
+  .step-num.canopy { background: var(--good); }
+  .step-content { flex: 1; }
+  .step-title { font-weight: 500; font-size: 15px; margin-bottom: 2px; }
+  .step-desc { font-size: 14px; color: var(--text-2); }
+
+  /* Code/formula block */
+  .formula {
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 18px 20px;
+    border-radius: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.8;
+    overflow-x: auto;
+  }
+  .formula .c { color: #94a3b8; font-style: italic; }
+  .formula .v { color: #fcd34d; }
+  .formula .o { color: #f87171; }
+  .formula .n { color: #86efac; }
+  .formula hr {
+    border: none;
+    border-top: 1px dashed #44403c;
+    margin: 12px 0;
+  }
+  .formula .label {
+    color: #fbbf24;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    display: block;
+    margin: 12px 0 6px;
+  }
+  .formula .label:first-child { margin-top: 0; }
+
+  /* Worked example tabs */
+  .tabs {
+    display: flex; gap: 4px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    padding: 10px 16px;
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-3);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+  }
+  .tab:hover { color: var(--text-2); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* Stat grid */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .stat {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .stat-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin-bottom: 6px;
+  }
+  .stat-value {
+    font-size: 24px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-value.warn { color: var(--warn); }
+  .stat-value.good { color: var(--good); }
+  .stat-value.bad { color: var(--bad); }
+  .stat-sub { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+
+  /* Callout */
+  .callout {
+    background: var(--info-bg);
+    border-left: 3px solid var(--info);
+    padding: 16px 20px;
+    border-radius: 6px;
+    font-size: 14px;
+    color: #1e3a8a;
+    margin: 24px 0;
+  }
+  .callout.warn { background: var(--warn-bg); border-color: var(--warn); color: #78350f; }
+  .callout.good { background: var(--good-bg); border-color: var(--good); color: #14532d; }
+  .callout strong { font-weight: 600; }
+
+  /* Pros/cons grid */
+  .proscons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  @media (max-width: 880px) { .proscons { grid-template-columns: 1fr; } }
+  .pc-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .pc-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 15px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .pc-header.wds { background: linear-gradient(180deg, #fef9e7, #fdf6d4); }
+  .pc-header.canopy { background: linear-gradient(180deg, #ecfdf5, #d1fae5); }
+  .pc-list { padding: 14px 20px; }
+  .pc-list h4 {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin: 8px 0;
+  }
+  .pc-list ul { list-style: none; padding: 0; }
+  .pc-list li {
+    padding: 6px 0 6px 22px;
+    position: relative;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .pc-list li.pro::before {
+    content: '✓';
+    position: absolute; left: 0; top: 6px;
+    color: var(--good);
+    font-weight: 600;
+  }
+  .pc-list li.con::before {
+    content: '✗';
+    position: absolute; left: 0; top: 6px;
+    color: var(--bad);
+    font-weight: 600;
+  }
+
+  /* Variable mapping */
+  .vmap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .vmap-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 14px;
+    background: var(--surface-2);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .vmap-search {
+    padding: 6px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 13px;
+    width: 200px;
+  }
+  .vmap-search:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  table.vmap-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .vmap-table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .vmap-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .vmap-table td:first-child { font-family: 'JetBrains Mono', monospace; color: var(--accent); }
+  .vmap-table tr:last-child td { border-bottom: none; }
+  .vmap-table tr.hidden { display: none; }
+
+  /* Tier table */
+  .tier-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 16px;
+  }
+  .tier-table th, .tier-table td {
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .tier-table th {
+    background: var(--surface-2);
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .tier-table tr:last-child td { border-bottom: none; }
+  .tier-table td { font-variant-numeric: tabular-nums; }
+  .tier-table .tier-pill {
+    display: inline-block;
+    width: 28px; height: 22px;
+    border-radius: 6px;
+    text-align: center;
+    line-height: 22px;
+    font-size: 12px;
+    font-weight: 600;
+    color: white;
+  }
+  .tier-A { background: #1e293b; }
+  .tier-B { background: #475569; }
+  .tier-C { background: #94a3b8; }
+  .tier-LP { background: #d6d3d1; color: var(--text-2); }
+
+  /* Time impact bar chart */
+  .timebar {
+    display: flex; align-items: center; gap: 16px;
+    margin: 12px 0;
+  }
+  .timebar-label { width: 80px; font-size: 13px; font-weight: 500; }
+  .timebar-track {
+    flex: 1;
+    background: var(--surface-2);
+    border-radius: 6px;
+    height: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+  .timebar-fill {
+    height: 100%;
+    display: flex; align-items: center;
+    padding: 0 12px;
+    color: white;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 6px;
+    transition: width 0.6s ease;
+  }
+  .timebar-fill.wds { background: var(--warn); }
+  .timebar-fill.canopy { background: var(--good); }
+
+  /* Footer */
+  footer {
+    padding: 32px 0;
+    color: var(--text-3);
+    font-size: 13px;
+  }
+  footer .container {
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 12px;
+  }
+
+  @media print {
+    .hero { padding: 32px 0 24px; }
+    section { padding: 32px 0; page-break-inside: avoid; }
+    .formula { background: #f5f5f4 !important; color: var(--text) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .formula .c { color: #57534e !important; }
+    .formula .v { color: #b45309 !important; }
+    .formula .o { color: #b91c1c !important; }
+    .formula .n { color: #15803d !important; }
+    .formula .label { color: #1c1917 !important; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="container">
+    <span class="hero-eyebrow">Audit Document</span>
+    <h1>Canopy reorder math, audited side-by-side with the WDS Purchasing Reorder Report</h1>
+    <p class="hero-sub">
+      A field-by-field comparison of how Canopy generates its reorder recommendations versus the legacy WDS process — same SKUs, same data, two very different outputs. Built for Golf to audit the calculation logic; designed so leadership can see why the upgrade matters.
+    </p>
+    <div class="hero-meta">
+      <span><strong>Prepared for:</strong> Winsome purchasing & finance leadership</span>
+      <span><strong>Worked example:</strong> Item #94918 (CLAIRE Accent Table)</span>
+      <span><strong>As of:</strong> May 2026</span>
+    </div>
+  </div>
+</header>
+
+<!-- Section 1: At a glance -->
+<section class="section">
+  <div class="container">
+    <div class="section-eyebrow">01 · At a glance</div>
+    <h2>One report vs one dashboard</h2>
+    <p class="section-lede">
+      Today, a buyer reviewing 600 SKUs cycles through three WDS screens per item — Reorder Report, F5 sales history, Shift F9 projected inventory — and applies judgment to merge the three views. Canopy collapses that loop into one calculation that ingests the same WDS data plus Amazon's consumer-side signal.
+    </p>
+
+    <div class="compare">
+      <!-- WDS panel -->
+      <div class="panel">
+        <div class="panel-header wds">
+          <div class="panel-title">📋 Current process — WDS</div>
+          <span class="badge wds">3 screens, manual</span>
+        </div>
+        <div class="panel-body">
+          <div class="steps">
+            <div class="step">
+              <div class="step-num wds">1</div>
+              <div class="step-content">
+                <div class="step-title">Run Purchasing Reorder Report</div>
+                <div class="step-desc">Per-Agent run with selection inputs: Backup Inventory months, Transit Time, Reorder Window. Output is one row per SKU with Reorder ETD.</div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num wds">2</div>
+              <div class="step-content">
+                <div class="step-title">F5 — 2nd & 3rd Inventory Inquiry screens</div>
+                <div class="step-desc">Per-item: scroll through 12+ months of unit sales, returns, invoice $; then channel split (#9944 1P, #1750 DF, OTHRS, #2200 DI). Eyeball trends, year-over-year swings, Amazon spikes. Talk to manager when fluctuations aren't explainable from the numbers alone.</div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num wds">3</div>
+              <div class="step-content">
+                <div class="step-title">Shift F9 — Projected Inventory</div>
+                <div class="step-desc">Per-item: ledger of customer/transfer orders + scheduled receipts (open POs with ETA), month by month. Used to push the suggested ETD later if open POs would arrive too close together.</div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num wds">4</div>
+              <div class="step-content">
+                <div class="step-title">Buyer adjusts the Reorder ETD</div>
+                <div class="step-desc">Final answer is the Reorder Report's ETD ± buyer's manual judgment from steps 2 and 3. Buyer must also mentally subtract production lead time to figure out the actual PO-placement date.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Canopy panel -->
+      <div class="panel">
+        <div class="panel-header canopy">
+          <div class="panel-title">⚡ Canopy process</div>
+          <span class="badge canopy">1 dashboard, automated</span>
+        </div>
+        <div class="panel-body">
+          <div class="steps">
+            <div class="step">
+              <div class="step-num canopy">1</div>
+              <div class="step-content">
+                <div class="step-title">Velocity (auto)</div>
+                <div class="step-desc">Weighted blend of 3-mo / 6-mo / 12-mo windows (50% / 30% / 20%) with kit-implied units rolled in and a per-month seasonality factor applied.</div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num canopy">2</div>
+              <div class="step-content">
+                <div class="step-title">Inventory at arrival (auto)</div>
+                <div class="step-desc">Woodinville on-hand + Amazon FC on-hand + open POs arriving before lead-time cutoff − projected demand during lead time. F9-style logic baked into the math.</div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num canopy">3</div>
+              <div class="step-content">
+                <div class="step-title">Tier-based targets (auto)</div>
+                <div class="step-desc">Each SKU has a tier (A / B / C / Low Priority) with its own target days of supply, safety days, and Amazon DOI target. No single global "backup months" — high-revenue SKUs get more buffer than tail items.</div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num canopy">4</div>
+              <div class="step-content">
+                <div class="step-title">Reorder qty + decision + order-by date (auto)</div>
+                <div class="step-desc">Quantity respecting MOQ. Decision: <span class="mono">order</span> / <span class="mono">watch</span> / <span class="mono">do_not_order</span>. Date = projected stockout − <em>full</em> lead time (production + transit + port). Container-fit hint included.</div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-num canopy">5</div>
+              <div class="step-content">
+                <div class="step-title">Amazon DOI + forecast variance + pull-back alert (auto)</div>
+                <div class="step-desc">Combined Amazon FC + Woodinville pool sized against Amazon's own forward forecast. Surfaces the SKUs where Amazon's algorithm is signaling a pull-back before it shows up in WDS shipment history.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>The three screens are still useful</strong> — Canopy isn't replacing buyer judgment, it's eliminating the busywork that wraps around it. Buyers still review surfaced edge cases; the Q4 spikes that don't repeat are exactly what Canopy promotes to the top of the queue.
+    </div>
+  </div>
+</section>
+
+<!-- Section 2: The math -->
+<section class="section">
+  <div class="container">
+    <div class="section-eyebrow">02 · The math</div>
+    <h2>Same inputs, different outputs</h2>
+    <p class="section-lede">
+      The WDS Reorder Report uses an arithmetic mean of three velocity windows. Canopy uses a weighted blend, applies seasonality, separates target inventory from safety stock, and back-calculates the order-by date using the full lead time.
+    </p>
+
+    <div class="compare">
+      <div class="panel">
+        <div class="panel-header wds">
+          <div class="panel-title">WDS formula</div>
+          <span class="badge wds">audit reference</span>
+        </div>
+        <div class="panel-body">
+<pre class="formula"><span class="label">Velocity</span><span class="v">MONTHLY_SALES</span> = (<span class="v">v_3mo</span> + <span class="v">v_6mo</span> + <span class="v">v_12mo</span>) / <span class="n">3</span>
+   <span class="c">// arithmetic mean of three windows</span>
+
+<span class="label">Backup buffer</span><span class="v">BACKUP_QTY</span> = <span class="v">MONTHLY_SALES</span> × <span class="v">backupMonths</span>
+   <span class="c">// backupMonths set per report run (e.g. 1.50)</span>
+
+<span class="label">Coverage</span><span class="v">GOOD_FOR_MO</span> = (<span class="v">ONHAND</span> + <span class="v">IMPORT_ON_ORDER</span> − <span class="v">BACKUP_QTY</span>) / <span class="v">MONTHLY_SALES</span>
+   <span class="c">// months of coverage above the backup floor</span>
+
+<span class="label">Factory ready date</span><span class="v">REORDER_ETD</span> = today + <span class="v">GOOD_FOR_MO</span> × <span class="n">30.42</span> − <span class="v">TRANSIT_DAYS</span>
+   <span class="c">// only subtracts transit; buyer mentally</span>
+   <span class="c">// subtracts production lead time</span>
+
+<span class="label">Filter flag</span><span class="o">*</span> if <span class="v">REORDER_ETD</span> ≤ today + <span class="v">REORDER_WINDOW</span>
+   <span class="c">// asterisk on rows that need attention soon</span></pre>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header canopy">
+          <div class="panel-title">Canopy formula</div>
+          <span class="badge canopy">implemented</span>
+        </div>
+        <div class="panel-body">
+<pre class="formula"><span class="label">Step 1 — velocity</span><span class="v">v_3mo</span>  = sum(units in 13 weeks)  / <span class="n">13</span>
+<span class="v">v_6mo</span>  = sum(units in 26 weeks)  / <span class="n">26</span>
+<span class="v">v_12mo</span> = sum(units in 52 weeks)  / <span class="n">52</span>
+<span class="v">blendedWeekly</span> = (<span class="v">v_3mo</span>×<span class="n">0.5</span> + <span class="v">v_6mo</span>×<span class="n">0.3</span> + <span class="v">v_12mo</span>×<span class="n">0.2</span>)
+   <span class="c">// + kit-implied units (parent×qtyPerKit)</span>
+<span class="v">forecastVelocity</span> = <span class="v">blendedWeekly</span> × <span class="v">seasonality[month]</span>
+
+<span class="label">Step 2 — inventory</span><span class="v">onHand</span>     = Woodinville + Amazon FC
+<span class="v">inbound</span>    = Σ(qtyOrdered − qtyReceived) for open POs
+<span class="v">inventoryAtArrival</span> = <span class="v">onHand</span> + <span class="v">arrivingByCutoff</span> −
+                     round(<span class="v">forecastVelocity</span> × leadDays/<span class="n">7</span>)
+
+<span class="label">Step 3 — targets per tier</span><span class="v">required</span> = round(<span class="v">forecastVelocity</span> × (<span class="v">tier.targetDays</span>+<span class="v">tier.safetyDays</span>)/<span class="n">7</span>)
+
+<span class="label">Step 4 — qty & decision</span><span class="v">rawReorderQty</span> = <span class="v">required</span> − <span class="v">inventoryAtArrival</span>
+<span class="v">adjustedQty</span>   = max(<span class="v">rawReorderQty</span>, <span class="v">MOQ</span>)
+decision = order | watch | do_not_order
+
+<span class="label">Step 5 — timing (full lead time)</span><span class="v">recommendedOrderByDate</span> = <span class="v">projectedStockoutDate</span>
+                       − <span class="v">totalLeadTimeDays</span>
+   <span class="c">// includes production + transit + port</span></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <strong>Subtle but important difference.</strong> WDS's Reorder ETD is the date goods need to leave the factory (factory-ready). The buyer must mentally subtract another ~60 production days to figure out the actual PO-placement date. Canopy's <span class="mono">recommendedOrderByDate</span> already subtracts the full lead time and gives the buyer the date they should be sending the PO.
+    </div>
+  </div>
+</section>
+
+<!-- Section 3: Worked example -->
+<section class="section">
+  <div class="container">
+    <div class="section-eyebrow">03 · Worked example</div>
+    <h2>Item #94918 — same SKU through both systems</h2>
+    <p class="section-lede">
+      A real example from the May 7, 2026 review. Sales spiked to 739 units in December 2025 and 438 in November 2025 — driven almost entirely by Amazon 1P PO bursts (account #9944), which represent invoice timing rather than consumer demand. By April 2026, Amazon shipped zero. WDS's blend smooths this into a single number; Canopy's sources separate it.
+    </p>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="inputs">Inputs (same for both)</button>
+      <button class="tab" data-tab="wds">WDS output</button>
+      <button class="tab" data-tab="canopy">Canopy output</button>
+      <button class="tab" data-tab="amazon">+ Amazon Vendor Central</button>
+    </div>
+
+    <div class="tab-panel active" id="panel-inputs">
+      <div class="panel" style="margin-bottom:24px;">
+        <div class="panel-header"><div class="panel-title">Item #94918 — CLAIRE Accent Table, Walnut Finish</div><span class="badge neutral">vendor: BANGKOKMAS</span></div>
+        <div class="panel-body">
+          <div class="stats">
+            <div class="stat"><div class="stat-label">On Hand (Woodinville)</div><div class="stat-value">1,135</div><div class="stat-sub">WDS LOC 1, May 7</div></div>
+            <div class="stat"><div class="stat-label">Import On Order</div><div class="stat-value">0</div><div class="stat-sub">no open factory POs</div></div>
+            <div class="stat"><div class="stat-label">3-month avg sales</div><div class="stat-value">66</div><div class="stat-sub">Feb–Apr 2026</div></div>
+            <div class="stat"><div class="stat-label">6-month avg sales</div><div class="stat-value warn">259</div><div class="stat-sub">Nov 2025–Apr 2026 ← spiked by Q4 1P bursts</div></div>
+            <div class="stat"><div class="stat-label">12-month avg sales</div><div class="stat-value">158</div><div class="stat-sub">trailing year</div></div>
+            <div class="stat"><div class="stat-label">Backup setting</div><div class="stat-value">1.50 mo</div><div class="stat-sub">global, this run</div></div>
+            <div class="stat"><div class="stat-label">Transit time</div><div class="stat-value">30d</div><div class="stat-sub">selection input</div></div>
+            <div class="stat"><div class="stat-label">Reorder window</div><div class="stat-value">90d</div><div class="stat-sub">selection input</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">F5 3rd Screen — channel mix (the 1P spike unmasked)</div></div>
+        <div class="panel-body">
+          <table class="tier-table">
+            <thead>
+              <tr><th>Month</th><th>LOC 1 Total</th><th>#9944 (Amazon 1P)</th><th>#1750 (Amazon DF)</th><th>OTHRS (Domestic)</th><th>1P + DF % of total</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Apr 2026</td><td>95</td><td>0</td><td>0</td><td>95</td><td>0.0%</td></tr>
+              <tr><td>Mar 2026</td><td>86</td><td>0</td><td>0</td><td>86</td><td>0.0%</td></tr>
+              <tr><td>Feb 2026</td><td>20</td><td>0</td><td>0</td><td>20</td><td>0.0%</td></tr>
+              <tr><td>Jan 2026</td><td>183</td><td>94</td><td>0</td><td>89</td><td>51.4%</td></tr>
+              <tr><td>Dec 2025</td><td><strong style="color:var(--bad)">739</strong></td><td><strong>583</strong></td><td>5</td><td>151</td><td><strong>79.6%</strong></td></tr>
+              <tr><td>Nov 2025</td><td><strong style="color:var(--bad)">438</strong></td><td><strong>286</strong></td><td>4</td><td>148</td><td><strong>66.2%</strong></td></tr>
+              <tr><td>Oct 2025</td><td>87</td><td>0</td><td>0</td><td>87</td><td>0.0%</td></tr>
+              <tr><td>Sep 2025</td><td>54</td><td>0</td><td>0</td><td>54</td><td>0.0%</td></tr>
+              <tr><td>Aug 2025</td><td>55</td><td>0</td><td>0</td><td>55</td><td>0.0%</td></tr>
+            </tbody>
+          </table>
+          <div class="callout warn" style="margin-top:16px;">
+            <strong>What the buyer is seeing.</strong> Domestic demand (OTHRS column) is steady at 50–150/mo year-round. Amazon 1P (#9944) only fires Nov–Jan — three big PO bursts that account for the entire spike. By April 2026, Amazon has stopped 1P ordering altogether. The 6-month average of 259 is misleading.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-wds">
+      <div class="panel">
+        <div class="panel-header wds"><div class="panel-title">WDS Reorder Report output</div></div>
+        <div class="panel-body">
+<pre class="formula"><span class="c">// WDS blend formula</span>
+<span class="v">MONTHLY_SALES</span> = (<span class="n">66</span> + <span class="n">259</span> + <span class="n">158</span>) / <span class="n">3</span> = <span class="n">161</span>
+
+<span class="v">BACKUP_QTY</span> = <span class="n">161</span> × <span class="n">1.50</span> = <span class="n">241.5</span>
+
+<span class="v">GOOD_FOR_MO</span> = (<span class="n">1135</span> + <span class="n">0</span> − <span class="n">241.5</span>) / <span class="n">161</span> = <span class="n">5.55</span> mo
+
+<span class="v">REORDER_ETD</span> = <span class="n">May 7, 2026</span> + (<span class="n">5.55</span> × <span class="n">30.42</span>)d − <span class="n">30</span>d transit
+            = <span class="n">Sep 23, 2026</span>  <span class="c">// factory-ready date</span>
+
+<span class="c">// Buyer must then mentally subtract</span>
+<span class="c">// production lead time (~60 days)</span>
+<span class="c">// → "PO must be placed by ~July 25, 2026"</span></pre>
+          <div class="stats">
+            <div class="stat"><div class="stat-label">Reorder ETD</div><div class="stat-value warn">Sep 23, 2026</div><div class="stat-sub">factory-ready, not order-by</div></div>
+            <div class="stat"><div class="stat-label">Coverage from now</div><div class="stat-value">5.55 mo</div><div class="stat-sub">at 161/mo blended velocity</div></div>
+            <div class="stat"><div class="stat-label">Output flag</div><div class="stat-value">no asterisk</div><div class="stat-sub">ETD &gt; today + 90d</div></div>
+            <div class="stat"><div class="stat-label">Asks the buyer to</div><div class="stat-value" style="font-size:14px; font-weight:500;">Run F5 + F9, decide if 1P bursts are real</div></div>
+          </div>
+          <div class="callout warn">
+            <strong>The risk.</strong> The 5.55-month coverage assumes 161 units/mo will continue. Reality: Amazon 1P stopped ordering in February. True consumer demand (DF + Domestic) is closer to 80–120/mo, so coverage is actually closer to 9–11 months. WDS doesn't surface this — the buyer has to spot it manually in F5.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-canopy">
+      <div class="panel">
+        <div class="panel-header canopy"><div class="panel-title">Canopy output (Tier B assumed for example)</div></div>
+        <div class="panel-body">
+<pre class="formula"><span class="label">Velocity (weighted, weekly basis)</span><span class="v">v_3mo</span>  = <span class="n">66</span>/<span class="n">4.33</span>  = <span class="n">15.2</span>/wk
+<span class="v">v_6mo</span>  = <span class="n">259</span>/<span class="n">4.33</span> = <span class="n">59.8</span>/wk
+<span class="v">v_12mo</span> = <span class="n">158</span>/<span class="n">4.33</span> = <span class="n">36.5</span>/wk
+<span class="v">blended</span> = (<span class="n">15.2</span>×<span class="n">0.5</span> + <span class="n">59.8</span>×<span class="n">0.3</span> + <span class="n">36.5</span>×<span class="n">0.2</span>)
+        = <span class="n">32.9</span>/wk = <span class="n">142.4</span>/mo
+<span class="c">// Lower than WDS's 161 because Canopy weights recent</span>
+<span class="c">// 3-mo more heavily — recent demand has cooled</span>
+
+<span class="label">Inventory at arrival (90-day lead)</span><span class="v">onHand</span> = <span class="n">696</span> (Woodinville) + <span class="n">184</span> (Amazon FC)
+       = <span class="n">880</span>   <span class="c">// Apr 19 Vendor Central snapshot</span>
+<span class="v">inbound</span> = <span class="n">500</span> (incoming, per Vendor Central)
+<span class="v">leadTimeDemand</span> = <span class="n">32.9</span>×<span class="n">90</span>/<span class="n">7</span> = <span class="n">423</span>
+<span class="v">inventoryAtArrival</span> = <span class="n">880</span> + <span class="n">500</span> − <span class="n">423</span> = <span class="n">957</span>
+
+<span class="label">Tier B target & decision</span><span class="v">required</span> = round(<span class="n">32.9</span> × (<span class="n">40</span>+<span class="n">10</span>)/<span class="n">7</span>) = <span class="n">235</span>
+<span class="v">rawReorderQty</span> = <span class="n">235</span> − <span class="n">957</span> = −<span class="n">722</span>
+<span class="v">decision</span> = <span class="n">do_not_order</span>  <span class="c">// inventoryAtArrival far exceeds target</span>
+
+<span class="label">Timing</span><span class="v">projectedStockoutDate</span> ≈ <span class="n">Nov 10, 2026</span>
+<span class="v">recommendedOrderByDate</span> = <span class="n">Nov 10</span> − <span class="n">90</span>d
+                       = <span class="n">Aug 12, 2026</span></pre>
+          <div class="stats">
+            <div class="stat"><div class="stat-label">Decision</div><div class="stat-value good">Do not order</div><div class="stat-sub">957 at-arrival vs 235 needed</div></div>
+            <div class="stat"><div class="stat-label">Order-by date</div><div class="stat-value">Aug 12, 2026</div><div class="stat-sub">PO placement, not factory-ready</div></div>
+            <div class="stat"><div class="stat-label">Weeks of supply</div><div class="stat-value good">26.8 wk</div><div class="stat-sub">at 32.9/wk blended velocity</div></div>
+            <div class="stat"><div class="stat-label">Inventory pool</div><div class="stat-value">880</div><div class="stat-sub">696 Woodinville + 184 Amazon FC</div></div>
+          </div>
+          <div class="callout good">
+            <strong>The win.</strong> Canopy says "no order needed" and gives the buyer breathing room until mid-August before re-evaluating — without the buyer having to manually merge the WDS Reorder Report, F5 trend review, and F9 projected-inventory ledger. The Amazon FC inventory of 184 units, currently invisible to WDS, materially shifts the answer.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-amazon">
+      <div class="panel">
+        <div class="panel-header canopy"><div class="panel-title">Amazon DOI + forecast variance + pull-back alert</div><span class="badge canopy">V2 capability</span></div>
+        <div class="panel-body">
+          <p style="font-size:14px; color:var(--text-2); margin-bottom:16px;">
+            From the Vendor Central Retail Analytics export (the dataset Golf's future Amazon API will automate). Currently a manual upload. Same Item #94918.
+          </p>
+          <div class="stats">
+            <div class="stat"><div class="stat-label">Trailing 9-mo Amazon sell-through</div><div class="stat-value">4,959</div><div class="stat-sub">≈ 551/mo, 18.4/day</div></div>
+            <div class="stat"><div class="stat-label">Amazon mean forecast (next 8 periods)</div><div class="stat-value warn">2,599</div><div class="stat-sub">≈ 325/mo, 11.6/day</div></div>
+            <div class="stat"><div class="stat-label">Forecast variance</div><div class="stat-value bad">−36%</div><div class="stat-sub">vs trailing 9-mo</div></div>
+            <div class="stat"><div class="stat-label">Combined Amazon DOI</div><div class="stat-value">47.8 days</div><div class="stat-sub">880 ÷ 18.4/day, target 50 (Tier B)</div></div>
+            <div class="stat"><div class="stat-label">DOI health</div><div class="stat-value">🔵 Blue</div><div class="stat-sub">96% of target — adequate</div></div>
+            <div class="stat"><div class="stat-label">Pull-back alert</div><div class="stat-value bad">⚠️ Triggered</div><div class="stat-sub">drop &gt; configured threshold</div></div>
+          </div>
+          <div class="callout">
+            <strong>Why this matters for purchasing.</strong> Amazon's own algorithm is signaling a 36% drop in forward demand. WDS's view (1,135 onhand, 5.55 mo coverage) makes the SKU look comfortably stocked. Canopy's view says: <em>actually you're already adequately covered including Amazon's pool, and Amazon is forecasting demand will cool, so don't over-order based on the 1P spike that's already in the rear-view mirror.</em> This is the difference between reacting to PO timing and reading consumer demand.
+          </div>
+          <div class="callout warn">
+            <strong>Gap to flag for Golf.</strong> Today, this Amazon picture comes from manual Vendor Central uploads. Once Golf's Amazon API ingestion is live, Canopy will refresh this nightly. Until then, the Amazon DOI / pull-back capability is real but cadence-limited.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Section 4: Capabilities only Canopy has -->
+<section class="section">
+  <div class="container">
+    <div class="section-eyebrow">04 · What Canopy adds</div>
+    <h2>Capabilities not present in the WDS Reorder Report</h2>
+    <p class="section-lede">
+      The base WDS report does one thing well — it tells you when stock will run out at current blended velocity. Canopy keeps that calculation and layers on the signals buyers currently piece together by hand or do without entirely.
+    </p>
+
+    <div class="compare">
+      <div class="panel">
+        <div class="panel-header canopy"><div class="panel-title">Inventory & demand</div></div>
+        <div class="panel-body" style="font-size:14px; color:var(--text-2);">
+          <ul style="list-style:none; padding:0;">
+            <li style="padding:8px 0; border-bottom: 1px solid var(--border);"><strong style="color:var(--text);">Amazon FC + Woodinville pool.</strong> WDS reports Woodinville only. Canopy adds Amazon's FC inventory to the available pool — material when Amazon holds significant stock for 1P / DI.</li>
+            <li style="padding:8px 0; border-bottom: 1px solid var(--border);"><strong style="color:var(--text);">Weighted velocity blend.</strong> 50% / 30% / 20% across 3-mo / 6-mo / 12-mo, vs WDS's flat arithmetic mean. Recent shifts get more weight.</li>
+            <li style="padding:8px 0; border-bottom: 1px solid var(--border);"><strong style="color:var(--text);">Per-month seasonality factor.</strong> Buyer-set; default 1.0. WDS has no seasonality.</li>
+            <li style="padding:8px 0; border-bottom: 1px solid var(--border);"><strong style="color:var(--text);">Kit-implied demand.</strong> Child SKUs automatically inherit demand from any Parent kit they're part of (parent units × qty per kit). WDS treats kit Parents as standalone SKUs.</li>
+            <li style="padding:8px 0;"><strong style="color:var(--text);">Open POs auto-rolled in.</strong> F9-style projected inventory baked into the math, filtered to POs arriving within the lead-time window.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header canopy"><div class="panel-title">Decision quality</div></div>
+        <div class="panel-body" style="font-size:14px; color:var(--text-2);">
+          <ul style="list-style:none; padding:0;">
+            <li style="padding:8px 0; border-bottom: 1px solid var(--border);"><strong style="color:var(--text);">Tier-aware targets.</strong> A / B / C / Low Priority each get distinct target & safety days. WDS uses one global "backup months" per report run.</li>
+            <li style="padding:8px 0; border-bottom: 1px solid var(--border);"><strong style="color:var(--text);">Order-by date (full lead time).</strong> Subtracts production + transit + port processing. WDS only subtracts transit; buyer mentally adds production.</li>
+            <li style="padding:8px 0; border-bottom: 1px solid var(--border);"><strong style="color:var(--text);">Three-state decision.</strong> <span class="mono">order</span> / <span class="mono">watch</span> / <span class="mono">do_not_order</span>. WDS has a single asterisk if within reorder window.</li>
+            <li style="padding:8px 0; border-bottom: 1px solid var(--border);"><strong style="color:var(--text);">FCL container hint.</strong> Per-SKU 40HQ fraction with <span class="mono">lcl</span> / <span class="mono">round_up_to_fcl</span> / <span class="mono">fcl</span> / <span class="mono">multi_fcl</span> guidance. WDS has none.</li>
+            <li style="padding:8px 0;"><strong style="color:var(--text);">Amazon DOI + forecast variance + pull-back alerts.</strong> Read Amazon's forward signal alongside Winsome's history. WDS has no Amazon-side data.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="font-size:18px; font-weight:600; margin: 40px 0 16px;">Canopy tier defaults</h3>
+    <table class="tier-table">
+      <thead>
+        <tr><th>Tier</th><th>Description</th><th>Target days</th><th>Safety days</th><th>Total target</th><th>Amazon DOI target</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="tier-pill tier-A">A</span></td><td>Top revenue, highest stock priority</td><td>60</td><td>14</td><td>74 days (10.6 wk)</td><td>60 days</td></tr>
+        <tr><td><span class="tier-pill tier-B">B</span></td><td>Mid-tier revenue contributor</td><td>40</td><td>10</td><td>50 days (7.1 wk)</td><td>50 days</td></tr>
+        <tr><td><span class="tier-pill tier-C">C</span></td><td>Standard catalog item</td><td>30</td><td>7</td><td>37 days (5.3 wk)</td><td>40 days</td></tr>
+        <tr><td><span class="tier-pill tier-LP">LP</span></td><td>Low Priority — less than 30 days</td><td>&lt;30</td><td>&lt;7</td><td>tail-end SKUs</td><td>30 days</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Section 5: Time impact -->
+<section class="section">
+  <div class="container">
+    <div class="section-eyebrow">05 · Time impact</div>
+    <h2>Buyer hours per review cycle</h2>
+    <p class="section-lede">
+      The biggest leadership win isn't a sharper formula — it's the hours back. WDS's three-screen review takes 2–5 minutes per SKU; Canopy bulk-processes the catalog and surfaces only the SKUs needing attention.
+    </p>
+
+    <div class="panel" style="padding:32px;">
+      <div class="timebar">
+        <div class="timebar-label">WDS</div>
+        <div class="timebar-track">
+          <div class="timebar-fill wds" style="width: 95%;">~30 hours per review · 600 SKUs × ~3 min each</div>
+        </div>
+      </div>
+      <div class="timebar">
+        <div class="timebar-label">Canopy</div>
+        <div class="timebar-track">
+          <div class="timebar-fill canopy" style="width: 12%;">~3 hours · review surfaced edge cases only</div>
+        </div>
+      </div>
+      <p style="font-size:13px; color:var(--text-3); margin-top:16px;">
+        Canopy's 3 hours = buyer time spent on SKUs Canopy promotes to the queue (decision = <span class="mono">order</span> or <span class="mono">watch</span> with anomalies). The 90% of SKUs in steady state are reviewed automatically in the bulk run. Both estimates assume one buyer doing the full catalog.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- Section 6: Pros / cons -->
+<section class="section">
+  <div class="container">
+    <div class="section-eyebrow">06 · Trade-offs</div>
+    <h2>Honest comparison</h2>
+    <p class="section-lede">
+      Both systems have legitimate strengths. WDS is the proven status quo; Canopy is the upgrade with a real (small) implementation cost. Naming both keeps this audit credible.
+    </p>
+
+    <div class="proscons">
+      <div class="pc-card">
+        <div class="pc-header wds">📋 WDS Reorder Report</div>
+        <div class="pc-list">
+          <h4>Strengths</h4>
+          <ul>
+            <li class="pro">Proven, deeply familiar to buyers and Kasey</li>
+            <li class="pro">No external integration risk — runs on existing WDS data</li>
+            <li class="pro">F5 + F9 give per-item judgment loop where buyer expertise lives</li>
+            <li class="pro">Per-Agent grouping matches purchasing org structure</li>
+          </ul>
+          <h4>Limitations</h4>
+          <ul>
+            <li class="con">Manual three-screen scan: ~3 min × 600 SKUs = 30 buyer hours per review</li>
+            <li class="con">Single arithmetic-mean blend is bursty when 1P POs spike (94918 example)</li>
+            <li class="con">No seasonality, no kit-implied demand, no Amazon-side signal</li>
+            <li class="con">Reorder ETD is factory-ready, not order-by — buyer mentally subtracts production lead</li>
+            <li class="con">One global backup-months setting per run — no tier differentiation</li>
+            <li class="con">Amazon FC inventory invisible — pool size understated for 1P SKUs</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="pc-card">
+        <div class="pc-header canopy">⚡ Canopy</div>
+        <div class="pc-list">
+          <h4>Strengths</h4>
+          <ul>
+            <li class="pro">Single dashboard collapses Reorder Report + F5 + F9 review</li>
+            <li class="pro">Weighted velocity blend + per-month seasonality</li>
+            <li class="pro">Tier-aware targets (A / B / C / Low Priority)</li>
+            <li class="pro">Order-by date subtracts the full lead time</li>
+            <li class="pro">Amazon DOI + forecast variance + pull-back alerts (V2)</li>
+            <li class="pro">Kit-implied demand auto-computed</li>
+            <li class="pro">FCL container hint per SKU</li>
+            <li class="pro">~90% time reduction on routine review</li>
+          </ul>
+          <h4>Limitations</h4>
+          <ul>
+            <li class="con">New tool — buyer training curve, change management</li>
+            <li class="con">Depends on Golf's nightly data feeds being reliable</li>
+            <li class="con">Amazon side currently manual until Golf's Amazon API is live</li>
+            <li class="con">parthist.json doesn't yet expose customer account #, so 1P / DF / Domestic split inside LOC 1 is blended (Golf follow-up in flight)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Section 7: Variable mapping -->
+<section class="section">
+  <div class="container">
+    <div class="section-eyebrow">07 · Field reference</div>
+    <h2>Variable mapping: Canopy ↔ WDS</h2>
+    <p class="section-lede">
+      Quick lookup for Golf during audit. Each row shows the Canopy variable, the WDS-side concept it corresponds to, and the formula or rule.
+    </p>
+
+    <div class="vmap">
+      <div class="vmap-header">
+        <span>Field-by-field map</span>
+        <input type="text" class="vmap-search" placeholder="Filter…" id="vmap-search" />
+      </div>
+      <table class="vmap-table">
+        <thead>
+          <tr><th style="width:24%;">Canopy variable</th><th style="width:22%;">WDS field</th><th>Formula / rule</th></tr>
+        </thead>
+        <tbody id="vmap-body">
+          <tr><td>blendedWeeklyVelocity</td><td>MONTHLY SALES / 4.33</td><td>Weighted: <span class="mono">v_3mo×0.5 + v_6mo×0.3 + v_12mo×0.2</span> (per week). WDS uses arithmetic mean / 4.33.</td></tr>
+          <tr><td>seasonalityFactor</td><td>—</td><td>Per-month coefficient (default 1.0). Multiplied against blended velocity. No WDS equivalent.</td></tr>
+          <tr><td>onHand</td><td>ONHAND</td><td>Canopy: Woodinville + Amazon FC. WDS: Woodinville only.</td></tr>
+          <tr><td>inbound</td><td>IMPORT ON ORDER</td><td>Canopy: <span class="mono">Σ(qtyOrdered − qtyReceived)</span> for POs in {ordered, in_production, on_water, at_port}. WDS sums all open POs.</td></tr>
+          <tr><td>arrivingBeforeCutoff</td><td>(F9 manual scan)</td><td>Subset of inbound where container ETA ≤ today + leadTimeDays.</td></tr>
+          <tr><td>leadTimeDemand</td><td>—</td><td><span class="mono">round(weeklyVelocity × leadTimeDays / 7)</span>. Subtracted from on-hand pool to get "inventory at arrival."</td></tr>
+          <tr><td>inventoryAtArrival</td><td>—</td><td><span class="mono">onHand + arrivingBeforeCutoff − leadTimeDemand</span>. Canopy's projection of stock when next PO would land.</td></tr>
+          <tr><td>weeksOfSupply</td><td>GOOD FOR MO × 4.33</td><td>Canopy: <span class="mono">onHand / weeklyVelocity</span>. WDS: <span class="mono">(ONHAND + ON_ORDER − BACKUP_QTY) / MONTHLY_SALES</span>.</td></tr>
+          <tr><td>targetWeeksOfSupply</td><td>BACKUP INVENTORY × 4.33</td><td>Canopy: per tier (A=8.6w, B=5.7w, C=4.3w). WDS: single global setting per run.</td></tr>
+          <tr><td>safetyStockDays</td><td>(implicit in BACKUP)</td><td>Canopy: separate from target (A=14d, B=10d, C=7d). WDS folds into BACKUP.</td></tr>
+          <tr><td>required</td><td>—</td><td><span class="mono">round(weeklyVelocity × (targetDays + safetyDays) / 7)</span>.</td></tr>
+          <tr><td>rawReorderQty</td><td>—</td><td><span class="mono">required − inventoryAtArrival</span>. Negative ⇒ no order.</td></tr>
+          <tr><td>adjustedQty</td><td>(MOQ rounding)</td><td><span class="mono">max(rawReorderQty, MOQ)</span>.</td></tr>
+          <tr><td>decision</td><td>* asterisk flag</td><td>Canopy 3-state: <span class="mono">order</span> / <span class="mono">watch</span> (WoS &gt; targetWoS×0.6) / <span class="mono">do_not_order</span>. WDS binary flag.</td></tr>
+          <tr><td>projectedStockoutDate</td><td>—</td><td><span class="mono">today + (onHand / dailyDemand) days</span>.</td></tr>
+          <tr><td>recommendedOrderByDate</td><td>(buyer mental math)</td><td>Canopy: <span class="mono">projectedStockoutDate − totalLeadTimeDays</span> (production + transit + port). WDS gives factory-ready ETD only.</td></tr>
+          <tr><td>factoryReadyDate</td><td>REORDER ETD</td><td>Canopy: <span class="mono">recommendedOrderByDate + productionDays</span>. WDS: <span class="mono">today + GOOD_FOR_MO × 30.42 − transitDays</span>.</td></tr>
+          <tr><td>fclFraction40HQ</td><td>—</td><td><span class="mono">adjustedQty / SKU.fclQty40HQ</span>. Hint: lcl &lt; 0.85, round-up [0.85,1.15], fcl &gt; 1.15.</td></tr>
+          <tr><td>amazonDoi</td><td>—</td><td>(V2) <span class="mono">(amazonOnHand + woodinvilleOnHand) / amazonDailyVelocity</span>. Health: green/blue/amber/red/critical vs target DOI.</td></tr>
+          <tr><td>forecastVariancePct</td><td>—</td><td>(V2) <span class="mono">(amazonForecastWeekly − seasonallyAdjustedVelocity) / seasonallyAdjustedVelocity × 100</span>.</td></tr>
+          <tr><td>kit-implied demand</td><td>(buyer manual)</td><td>For Children: <span class="mono">+ Σ(parentSales × qtyPerKit)</span>. Auto in Canopy; manual judgment in WDS.</td></tr>
+          <tr><td>tier (A/B/C/LP)</td><td>(N/A)</td><td>Revenue-based annual classification. Drives target days, safety days, Amazon DOI target.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <span>Canopy reorder math audit · v1 · May 2026</span>
+    <span>Worked example uses item #94918, May 7 2026 review run · Vendor Central data from Apr 19 2026 snapshot</span>
+  </div>
+</footer>
+
+<script>
+  // Tab switching
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Variable mapping search
+  const vmapSearch = document.getElementById('vmap-search');
+  if (vmapSearch) {
+    vmapSearch.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      document.querySelectorAll('#vmap-body tr').forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.classList.toggle('hidden', q && !text.includes(q));
+      });
+    });
+  }
+</script>
+
+</body>
+</html>
