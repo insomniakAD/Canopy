@@ -70,6 +70,14 @@ enum PoStatus {
   cancelled
 }
 
+/// WDS receiving location for PO lines.
+/// LOC 1 = Woodinville warehouse receives the goods.
+/// LOC 3 = factory ships direct to Amazon (Direct Import); goods never touch the warehouse.
+enum PoReceivingLocation {
+  warehouse       // WDS LOC 1
+  direct_import   // WDS LOC 3
+}
+
 /// Container sizes used for ocean freight
 enum ContainerType {
   forty_gp  // 40' General Purpose (~56 CBM)
@@ -109,7 +117,9 @@ enum ImportType {
   amazon_sales          // Amazon Sales Diagnostic (Shipped Units by ASIN)
   amazon_vendor_central // Amazon Vendor Central operational report (inventory, OOS%, etc.)
   amazon_forecast       // Amazon Mean Forecast (48-week forward forecast by ASIN)
-  purchase_orders       // Open POs from WDS
+  purchase_orders       // Open POs from WDS (legacy porder.json + cont-det.json path)
+  wds_pitem             // pitem.json — line-level PO data (replaces porder/cont-det for per-SKU views)
+  wds_parthist_daily    // parthist-daily.json — daily inventory state snapshots (LOC 1, weekday-only)
   asin_mapping          // One-time or update: links ASINs to Winsome SKU codes
   di_orders             // Amazon Direct Import POs (factory ships direct to Amazon)
   kit_composition       // Kit bill-of-materials: Parent SKU + Child SKUs + qty per kit
@@ -344,6 +354,11 @@ model PurchaseOrder {
   estimatedShipDate    DateTime?     @map("estimated_ship_date") @db.Date
   estimatedArrivalDate DateTime?     @map("estimated_arrival_date") @db.Date
   actualArrivalDate    DateTime?     @map("actual_arrival_date") @db.Date
+  // WDS-source-of-truth fields from pitem.json (raw exports — never derived)
+  firstReceiveDate     DateTime?     @map("first_receive_date") @db.Date     // First receipt event for the PO (filtered to voided='0' AND inv-posted='1')
+  lastReceiveDate      DateTime?     @map("last_receive_date") @db.Date      // Last receipt event for the PO
+  vendorNum            String?       @map("vendor_num")                       // Raw WDS vendor#, retained even if Factory lookup fails
+  vendorName           String?       @map("vendor_name")                      // Raw WDS vendor name
   totalCbm             Decimal?      @map("total_cbm")
   totalCostUsd         Decimal?      @map("total_cost_usd")
   containerType        ContainerType? @map("container_type")
@@ -373,9 +388,27 @@ model PoLineItem {
   containerId     String? @map("container_id") @db.Uuid    // Container this line ships in (null = legacy or pre-shipment)
   quantityOrdered Int     @map("quantity_ordered")
   quantityReceived Int    @default(0) @map("quantity_received")
-  unitCostUsd     Decimal? @map("unit_cost_usd")
+  unitCostUsd     Decimal? @map("unit_cost_usd")             // Canopy-managed unit cost (NOT pitem.fob — that's a port code)
   cartonCount     Int?    @map("carton_count")
   lineCbm         Decimal? @map("line_cbm")
+
+  // WDS-source-of-truth fields from pitem.json (raw exports — never derived).
+  // Lines per PO are managed via delete-and-insert on each pitem ingest;
+  // unique (po_id, line_num) constraint will be added in a follow-up migration
+  // once existing rows are replaced by real WDS line numbers.
+  lineNum            Int                @default(1) @map("line_num")                  // pitem.lineNum
+  quantityCancelled  Int                @default(0) @map("quantity_cancelled")        // pitem.qtyCancel
+  quantityRemaining  Int?               @map("quantity_remaining")                    // pitem.qtyRemaining — pre-computed by WDS, do NOT recompute
+  recLoc             PoReceivingLocation @default(warehouse) @map("rec_loc")          // pitem.recLoc — "1" = warehouse, "3" = direct_import
+  // Counterintuitive WDS naming — verified by Golf's probe of 1300+ closed POs:
+  //   pi.date-promise = ETD (vendor ship-by commitment)
+  //   pi.date-needed  = ETA (warehouse-expected arrival)
+  // UI labels must read "ETD" / "ETA" — never expose raw WDS field names to users.
+  datePromise        DateTime?          @map("date_promise") @db.Date                 // pitem.datePromise = ETD
+  dateNeeded         DateTime?          @map("date_needed") @db.Date                  // pitem.dateNeeded  = ETA
+  dateLineClosed     DateTime?          @map("date_line_closed") @db.Date             // pitem.dateLineClosed
+  dwg                String?            @map("dwg")                                    // pitem.dwg — drawing reference
+  fob                String?            @map("fob")                                    // pitem.fob — 3-letter port-of-origin code (e.g. LCB = Laem Chabang)
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -446,6 +479,12 @@ model InventorySnapshot {
   quantityAvailable Int      @map("quantity_available")    // on_hand minus reserved
   snapshotDate      DateTime @map("snapshot_date") @db.Date
   importBatchId     String?  @map("import_batch_id") @db.Uuid
+
+  // WDS-source-of-truth fields from parthist-daily.json (LOC 1 only, weekday-only).
+  // Step-function carry-forward through weekends is a READ-time concern (chart
+  // rendering, demand calc) — do NOT generate synthetic Sat/Sun rows on import.
+  availEdi    Int? @map("avail_edi")     // parthist-daily.availEdi — EDI feed cap (customer-visible "we have at least N")
+  availDsfeed Int? @map("avail_dsfeed")  // parthist-daily.availDsfeed — drop-ship feed cap
 
   createdAt DateTime @default(now()) @map("created_at")
 

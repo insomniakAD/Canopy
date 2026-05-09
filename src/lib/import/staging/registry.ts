@@ -22,6 +22,7 @@ import { wdsInventoryStaging } from "../processors/wds-inventory-staging";
 import { purchaseOrdersStaging } from "../processors/purchase-orders-staging";
 import { kitCompositionStaging } from "../processors/kit-composition-staging";
 import { itemUpdateStaging } from "../processors/item-update-staging";
+import { parthistDailyStaging } from "../processors/parthist-daily-staging";
 
 /**
  * All import types go through staging (two-phase preview → commit).
@@ -41,6 +42,7 @@ export const STAGING_PROCESSORS: Partial<
   purchase_orders:        purchaseOrdersStaging        as ProcessorStagingContract<unknown>,
   kit_composition:        kitCompositionStaging        as ProcessorStagingContract<unknown>,
   item_update:            itemUpdateStaging            as ProcessorStagingContract<unknown>,
+  wds_parthist_daily:     parthistDailyStaging          as ProcessorStagingContract<unknown>,
 };
 
 /** Returns true if this import type uses the two-phase flow. */
