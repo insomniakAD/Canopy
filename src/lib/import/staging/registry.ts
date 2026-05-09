@@ -23,6 +23,7 @@ import { purchaseOrdersStaging } from "../processors/purchase-orders-staging";
 import { kitCompositionStaging } from "../processors/kit-composition-staging";
 import { itemUpdateStaging } from "../processors/item-update-staging";
 import { parthistDailyStaging } from "../processors/parthist-daily-staging";
+import { pitemStaging } from "../processors/pitem-staging";
 
 /**
  * All import types go through staging (two-phase preview → commit).
@@ -43,6 +44,7 @@ export const STAGING_PROCESSORS: Partial<
   kit_composition:        kitCompositionStaging        as ProcessorStagingContract<unknown>,
   item_update:            itemUpdateStaging            as ProcessorStagingContract<unknown>,
   wds_parthist_daily:     parthistDailyStaging          as ProcessorStagingContract<unknown>,
+  wds_pitem:              pitemStaging                  as ProcessorStagingContract<unknown>,
 };
 
 /** Returns true if this import type uses the two-phase flow. */
