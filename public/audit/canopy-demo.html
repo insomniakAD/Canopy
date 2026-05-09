@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Canopy vs WDS — Live Inventory Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --surface-2: #f5f5f4;
+    --border: #e7e5e4;
+    --border-strong: #d6d3d1;
+    --text: #1c1917;
+    --text-2: #57534e;
+    --text-3: #a8a29e;
+    --accent: #1e293b;
+    --accent-soft: #e2e8f0;
+    --canopy: #0f766e;          /* teal — Canopy line */
+    --canopy-soft: #ccfbf1;
+    --wds: #b45309;             /* amber — WDS line */
+    --wds-soft: #fef3c7;
+    --amazon: #f59e0b;          /* warm amber — Amazon FC band */
+    --amazon-soft: #fef3c7;
+    --good: #15803d;
+    --good-bg: #dcfce7;
+    --bad: #b91c1c;
+    --bad-bg: #fee2e2;
+    --warn: #b45309;
+    --warn-bg: #fef3c7;
+    --info: #1d4ed8;
+    --info-bg: #dbeafe;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.92em; }
+  .container { max-width: 1280px; margin: 0 auto; padding: 32px 28px 80px; }
+
+  /* Header */
+  header.page-header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 24px;
+    margin-bottom: 32px;
+  }
+  header.page-header .eyebrow {
+    color: var(--text-3);
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0 0 6px;
+  }
+  header.page-header h1 {
+    font-size: 32px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+    color: var(--text);
+  }
+  header.page-header .lede {
+    color: var(--text-2);
+    font-size: 15px;
+    margin: 0;
+    max-width: 720px;
+  }
+
+  /* Scenario chips */
+  .scenarios {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 24px;
+    padding: 6px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .scenarios button {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-2);
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex: 1;
+    min-width: 140px;
+    text-align: center;
+  }
+  .scenarios button:hover { color: var(--text); background: var(--surface); }
+  .scenarios button.active {
+    background: var(--surface);
+    border-color: var(--border-strong);
+    color: var(--text);
+    box-shadow: var(--shadow-sm);
+  }
+  .scenarios button .label { display: block; font-weight: 600; }
+  .scenarios button .meta { display: block; font-size: 11px; color: var(--text-3); margin-top: 2px; font-weight: 400; }
+
+  /* Scenario brief */
+  .brief {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 16px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow-sm);
+  }
+  .brief .summary { flex: 1; }
+  .brief h2 {
+    font-size: 17px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  .brief p { color: var(--text-2); margin: 0; font-size: 14px; }
+  .brief .stats {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+  }
+  .brief .stat { text-align: right; }
+  .brief .stat-label { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; }
+  .brief .stat-value { font-size: 18px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+  .tier-pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; background: var(--accent-soft); color: var(--accent); }
+
+  /* Hero chart */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+  .card .card-head {
+    padding: 18px 22px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .card .card-head h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 2px;
+    letter-spacing: -0.005em;
+  }
+  .card .card-head .desc { font-size: 13px; color: var(--text-2); margin: 0; }
+  .toggle-group {
+    display: inline-flex;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px;
+    flex-shrink: 0;
+  }
+  .toggle-group button {
+    background: transparent;
+    border: none;
+    color: var(--text-2);
+    padding: 5px 12px;
+    border-radius: 5px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .toggle-group button:hover { color: var(--text); }
+  .toggle-group button.active {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .hero { margin-bottom: 24px; }
+  .hero-chart { height: 460px; padding: 14px; }
+
+  /* Grid of supporting charts */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    margin-bottom: 24px;
+  }
+  .grid .chart-area { height: 320px; padding: 8px; }
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  /* Verdict bar */
+  .verdict {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 24px;
+    background: var(--surface);
+  }
+  .verdict .col { padding: 18px 22px; }
+  .verdict .col + .col { border-left: 1px solid var(--border); }
+  .verdict h4 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0 0 8px;
+    font-weight: 600;
+  }
+  .verdict .wds-col h4 { color: var(--wds); }
+  .verdict .canopy-col h4 { color: var(--canopy); }
+  .verdict .recommendation { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .verdict .recommendation .small { font-size: 13px; color: var(--text-2); font-weight: 400; }
+  .verdict .delta {
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--text-2);
+  }
+
+  /* Footer */
+  footer.page-footer {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text-3);
+    font-size: 12px;
+  }
+  footer.page-footer p { margin: 0 0 4px; }
+  footer.page-footer .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    background: var(--warn-bg);
+    color: var(--warn);
+    border-radius: 4px;
+    font-weight: 500;
+    margin-right: 8px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header class="page-header">
+  <p class="eyebrow">Canopy · Internal Audit Demo</p>
+  <h1>What changes when Canopy replaces the WDS Reorder Report?</h1>
+  <p class="lede">Pick a scenario. Five charts redraw with the same SKU's data run through both purchasing brains. The forecast is identical (V1 uses WDS's blended 3/6/12 model) — what differs is what each system <em>does</em> with that forecast.</p>
+</header>
+
+<nav class="scenarios" id="scenarios"></nav>
+
+<section class="brief" id="brief">
+  <div class="summary">
+    <h2 id="brief-title">—</h2>
+    <p id="brief-text">—</p>
+  </div>
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">SKU</div>
+      <div class="stat-value mono" id="brief-sku">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Tier</div>
+      <div class="stat-value"><span class="tier-pill" id="brief-tier">—</span></div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Lead Time</div>
+      <div class="stat-value" id="brief-lt">—</div>
+    </div>
+  </div>
+</section>
+
+<section class="card hero">
+  <div class="card-head">
+    <div>
+      <h3>Inventory runway — same SKU, two purchasing brains</h3>
+      <p class="desc">Warehouse on-hand projected forward 12 months. Amazon FC inventory shown as a translucent band behind. Today is the dashed vertical line.</p>
+    </div>
+    <div class="toggle-group" id="hero-toggle">
+      <button data-view="wds">WDS only</button>
+      <button data-view="canopy">Canopy only</button>
+      <button data-view="both" class="active">Both</button>
+    </div>
+  </div>
+  <div class="hero-chart" id="chart-runway"></div>
+</section>
+
+<section class="grid">
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h3>Channel composition</h3>
+        <p class="desc">WDS sees one number. Canopy sees the portfolio.</p>
+      </div>
+    </div>
+    <div class="chart-area" id="chart-channels"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h3>Amazon DOI awareness</h3>
+        <p class="desc">Days of inventory at Amazon FCs vs. tier target. WDS doesn't see this signal at all.</p>
+      </div>
+    </div>
+    <div class="chart-area" id="chart-doi"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h3>Reorder formula breakdown</h3>
+        <p class="desc">What goes into the recommended order quantity. Canopy adds tier safety stock and Amazon DOI gap.</p>
+      </div>
+    </div>
+    <div class="chart-area" id="chart-formula"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h3>PO timing</h3>
+        <p class="desc">When does each system trigger the next reorder? Canopy fires earlier when signals warrant.</p>
+      </div>
+    </div>
+    <div class="chart-area" id="chart-timing"></div>
+  </div>
+</section>
+
+<section class="verdict">
+  <div class="col wds-col">
+    <h4>WDS recommendation</h4>
+    <div class="recommendation" id="verdict-wds">— <span class="small">units</span></div>
+    <div class="delta" id="verdict-wds-delta">—</div>
+  </div>
+  <div class="col canopy-col">
+    <h4>Canopy recommendation</h4>
+    <div class="recommendation" id="verdict-canopy">— <span class="small">units</span></div>
+    <div class="delta" id="verdict-canopy-delta">—</div>
+  </div>
+</section>
+
+<footer class="page-footer">
+  <p><span class="badge">Stage 1 · Mock Data</span>Numbers shown are illustrative scenarios derived from Golf's SKU 40436 example. Real SKU data drops in here once you and Kasey provide the 5-scenario worksheet.</p>
+  <p>V1 forecast model is identical to WDS — Canopy's value is in <em>contextualization</em>, not forecast accuracy. Forecast-model changes are V2+.</p>
+</footer>
+
+</div>
+
+<script>
+'use strict';
+
+// =============================================================================
+// SCENARIO DATA — placeholder until real SKU data lands
+// =============================================================================
+// Each scenario is self-contained. computeProjection() generates the runway
+// arrays from the state + events + velocity, so we don't have to hand-author
+// 540 daily data points.
+
+const SCENARIOS = [
+  {
+    id: 'healthy',
+    label: 'Healthy steady-state',
+    meta: 'Tier B · baseline',
+    title: 'Both systems agree — no fireworks here',
+    summary: "Tier B SKU with healthy Amazon DOI and no PO surprises. Both WDS and Canopy land near the same answer. This is what 'most SKUs' look like and why the comparison matters most for the others.",
+    sku: { code: '40436', tier: 'B', leadDays: 90, vendorCountry: 'China' },
+    state: { whseToday: 903, amzFcToday: 3592 },
+    velocity: { wholesalePerMo: 250, amzRetailPerMo: 600 },
+    events: {
+      amzReplenish: [{ daysAhead: 30, qty: 800 }],
+      whseInbound: [{ daysAhead: 60, qty: 1500 }],
+    },
+    channelMix: { amazon_1p: 0.30, amazon_df: 0.10, amazon_di: 0.20, domestic: 0.40 },
+    amzDoi: { current: 88, target: 50, status: 'safe' },
+    thresholds: { min: 400, max: 1800 },
+    reorderTrigger: { wdsDaysOut: 100, canopyDaysOut: 95 },
+    formula: {
+      shared: { velocityMonthly: 850, leadMonths: 3, baseQty: 2550 },
+      wds: { components: [{ label: 'Velocity × Lead time', qty: 2550 }], total: 2550 },
+      canopy: {
+        components: [
+          { label: 'Velocity × Lead time', qty: 2550 },
+          { label: 'Tier B safety stock (40d)', qty: 1133 },
+          { label: 'Pending PO offset', qty: -1500 },
+        ],
+        total: 2183,
+      },
+    },
+  },
+  {
+    id: 'doi-drop',
+    label: 'Amazon DOI dropping',
+    meta: 'Tier A · DOI 28d',
+    title: 'Canopy reacts to Amazon FC depletion. WDS is blind to it.',
+    summary: "Tier A SKU. Amazon FC inventory has dropped to 28 days of supply (target: 60). Amazon will issue a 1P PO soon. WDS doesn't know — it watches warehouse on-hand only. Canopy fires the reorder ~6 weeks earlier so the warehouse has stock ready when Amazon's PO lands.",
+    sku: { code: '38211', tier: 'A', leadDays: 95, vendorCountry: 'China' },
+    state: { whseToday: 1240, amzFcToday: 1100 },
+    velocity: { wholesalePerMo: 320, amzRetailPerMo: 1180 },
+    events: {
+      amzReplenish: [],
+      whseInbound: [{ daysAhead: 110, qty: 1800 }],
+    },
+    channelMix: { amazon_1p: 0.45, amazon_df: 0.15, amazon_di: 0.10, domestic: 0.30 },
+    amzDoi: { current: 28, target: 60, status: 'critical' },
+    thresholds: { min: 800, max: 3000 },
+    reorderTrigger: { wdsDaysOut: 75, canopyDaysOut: 30 },
+    formula: {
+      shared: { velocityMonthly: 1500, leadMonths: 3.17, baseQty: 4750 },
+      wds: { components: [{ label: 'Velocity × Lead time', qty: 4750 }], total: 4750 },
+      canopy: {
+        components: [
+          { label: 'Velocity × Lead time', qty: 4750 },
+          { label: 'Tier A safety stock (60d)', qty: 3000 },
+          { label: 'Amazon DOI gap (32d × velocity)', qty: 1600 },
+        ],
+        total: 9350,
+      },
+    },
+  },
+  {
+    id: 'lead-slip',
+    label: 'Lead time slip',
+    meta: 'Tier B · PO +30d late',
+    title: 'Vendor pushed a known PO 30 days late. Tier safety stock saves Canopy from stockout.',
+    summary: "Tier B SKU with an inbound PO that just slipped 30 days. WDS's reorder trigger doesn't know about safety stock and will be too late — projected stockout day 105. Canopy's tier-B 40-day safety stock buffer absorbs the slip and stays above zero.",
+    sku: { code: '21088', tier: 'B', leadDays: 80, vendorCountry: 'Vietnam' },
+    state: { whseToday: 620, amzFcToday: 1850 },
+    velocity: { wholesalePerMo: 180, amzRetailPerMo: 420 },
+    events: {
+      amzReplenish: [],
+      whseInbound: [{ daysAhead: 110, qty: 1400, label: 'PO (30d slip)' }],
+    },
+    channelMix: { amazon_1p: 0.25, amazon_df: 0.05, amazon_di: 0.15, domestic: 0.55 },
+    amzDoi: { current: 62, target: 50, status: 'safe' },
+    thresholds: { min: 320, max: 1500 },
+    reorderTrigger: { wdsDaysOut: 105, canopyDaysOut: 65 },
+    formula: {
+      shared: { velocityMonthly: 600, leadMonths: 2.67, baseQty: 1600 },
+      wds: { components: [{ label: 'Velocity × Lead time', qty: 1600 }], total: 1600 },
+      canopy: {
+        components: [
+          { label: 'Velocity × Lead time', qty: 1600 },
+          { label: 'Tier B safety stock (40d)', qty: 800 },
+          { label: 'Amazon DOI gap (0d)', qty: 0 },
+        ],
+        total: 2400,
+      },
+    },
+  },
+  {
+    id: 'kit',
+    label: 'Kit parent',
+    meta: 'Kit · 2 children',
+    title: 'Kit-implied demand. WDS understates the child SKU velocity.',
+    summary: "This is a kit parent (1 chair + 1 ottoman). When a parent sells, both child SKUs are consumed — but WDS only records the parent sale, not the child consumption. Canopy adds kit-implied demand to each child's velocity (here, +180/mo), so the chair child's reorder fires when reality demands it, not when WDS finally notices.",
+    sku: { code: '50121-KIT', tier: 'B', leadDays: 95, vendorCountry: 'Malaysia' },
+    state: { whseToday: 480, amzFcToday: 0 },
+    velocity: { wholesalePerMo: 420, amzRetailPerMo: 0, kitImpliedFromParent: 180 },
+    events: {
+      amzReplenish: [],
+      whseInbound: [{ daysAhead: 75, qty: 900 }],
+    },
+    channelMix: { amazon_1p: 0, amazon_df: 0.45, amazon_di: 0, domestic: 0.55 },
+    amzDoi: { current: null, target: null, status: 'na' },
+    thresholds: { min: 240, max: 1200 },
+    reorderTrigger: { wdsDaysOut: 80, canopyDaysOut: 50 },
+    formula: {
+      shared: { velocityMonthly: 600, leadMonths: 3.17, baseQty: 1900 },
+      wds: { components: [{ label: 'Velocity × Lead time (parent only)', qty: 1330 }], total: 1330 },
+      canopy: {
+        components: [
+          { label: 'Direct child velocity × LT', qty: 1330 },
+          { label: 'Kit-implied velocity × LT', qty: 570 },
+          { label: 'Tier B safety stock (40d)', qty: 800 },
+        ],
+        total: 2700,
+      },
+    },
+  },
+  {
+    id: 'di-only',
+    label: 'DI-only SKU (LOC 3)',
+    meta: 'Direct Import · no warehouse',
+    title: 'Factory ships direct to Amazon. Inventory never touches Woodinville.',
+    summary: "DI-only SKU — Amazon issues POs and the factory ships overseas, bypassing the warehouse. WDS records LOC 3 as a single bursty number on PO ship date. Canopy isolates DI demand and treats Amazon's forecast as the authoritative signal (Vendor Central sell-through), not the lumpy WDS PO-timing.",
+    sku: { code: '74502-DI', tier: 'A', leadDays: 70, vendorCountry: 'China' },
+    state: { whseToday: 0, amzFcToday: 2400 },
+    velocity: { wholesalePerMo: 0, amzRetailPerMo: 980 },
+    events: {
+      amzReplenish: [{ daysAhead: 50, qty: 2000 }],
+      whseInbound: [],
+    },
+    channelMix: { amazon_1p: 0, amazon_df: 0, amazon_di: 1.0, domestic: 0 },
+    amzDoi: { current: 73, target: 60, status: 'safe' },
+    thresholds: { min: 1500, max: 4500 },
+    reorderTrigger: { wdsDaysOut: 110, canopyDaysOut: 65 },
+    formula: {
+      shared: { velocityMonthly: 980, leadMonths: 2.33, baseQty: 2287 },
+      wds: { components: [{ label: 'Velocity × Lead time (lumpy)', qty: 2287 }], total: 2287 },
+      canopy: {
+        components: [
+          { label: 'Vendor Central sell-through × LT', qty: 2400 },
+          { label: 'Tier A safety stock (60d)', qty: 1960 },
+          { label: 'Pending DI replenishment offset', qty: -2000 },
+        ],
+        total: 2360,
+      },
+    },
+  },
+];
+
+// =============================================================================
+// PROJECTION GENERATOR — produces the daily inventory series
+// =============================================================================
+// We build two parallel runways. Both share the same historical 6-month tail
+// (we treat current state as ground truth and back-extrapolate using avg
+// velocity). They diverge in the forward 12 months based on each system's
+// reorder logic.
+
+const PROJ_DAYS_BACK = 180;
+const PROJ_DAYS_FORWARD = 365;
+
+function generateProjection(s) {
+  const totalDailyDemand =
+    (s.velocity.wholesalePerMo + s.velocity.amzRetailPerMo + (s.velocity.kitImpliedFromParent || 0)) / 30;
+
+  const labels = [];
+  const dates = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  for (let d = -PROJ_DAYS_BACK; d <= PROJ_DAYS_FORWARD; d++) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + d);
+    dates.push(date);
+    labels.push(date.toISOString().slice(0, 10));
+  }
+
+  // Historical: linear back-extrapolation
+  function buildHistory(currentLevel) {
+    const out = [];
+    for (let d = -PROJ_DAYS_BACK; d <= 0; d++) {
+      out.push(Math.round(currentLevel + Math.abs(d) * totalDailyDemand));
+    }
+    return out;
+  }
+
+  // Forward: simulate with each system's reorder behavior
+  function simulateForward(start, mode) {
+    const arr = [start];
+    let level = start;
+    let pendingDeliveries = [];
+
+    // Pre-existing whse inbound from scenario (already-placed POs)
+    s.events.whseInbound.forEach((ev) => {
+      pendingDeliveries.push({ day: ev.daysAhead, qty: ev.qty });
+    });
+
+    // Pre-determined trigger day; PO arrives lead-time later
+    const triggerDay = mode === 'wds' ? s.reorderTrigger.wdsDaysOut : s.reorderTrigger.canopyDaysOut;
+    const triggeredQty = mode === 'wds' ? s.formula.wds.total : s.formula.canopy.total;
+    if (triggerDay < PROJ_DAYS_FORWARD) {
+      pendingDeliveries.push({ day: triggerDay + s.sku.leadDays, qty: triggeredQty });
+    }
+
+    for (let d = 1; d <= PROJ_DAYS_FORWARD; d++) {
+      level -= totalDailyDemand;
+      pendingDeliveries.forEach((p) => {
+        if (p.day === d) level += p.qty;
+      });
+      // Hard floor at 0 for visual clarity (a stockout means level stays at 0)
+      arr.push(Math.max(0, Math.round(level)));
+      if (level < 0) level = 0; // truncate negative carry
+    }
+    return arr;
+  }
+
+  // Amazon FC runway — same depletion rate but scaled to Amazon retail share
+  function buildAmazonHistory() {
+    const dailyAmz = (s.velocity.amzRetailPerMo || 0) / 30;
+    const out = [];
+    for (let d = -PROJ_DAYS_BACK; d <= 0; d++) {
+      out.push(Math.round(s.state.amzFcToday + Math.abs(d) * dailyAmz));
+    }
+    return out;
+  }
+  function simulateAmazonForward() {
+    const dailyAmz = (s.velocity.amzRetailPerMo || 0) / 30;
+    const arr = [s.state.amzFcToday];
+    let level = s.state.amzFcToday;
+    s.events.amzReplenish.forEach((ev) => {
+      // Will check daily
+    });
+    for (let d = 1; d <= PROJ_DAYS_FORWARD; d++) {
+      level -= dailyAmz;
+      s.events.amzReplenish.forEach((ev) => {
+        if (ev.daysAhead === d) level += ev.qty;
+      });
+      arr.push(Math.max(0, Math.round(level)));
+    }
+    return arr;
+  }
+
+  const historyWhse = buildHistory(s.state.whseToday);
+  const wdsForward = simulateForward(s.state.whseToday, 'wds');
+  const canopyForward = simulateForward(s.state.whseToday, 'canopy');
+  const amzHistory = buildAmazonHistory();
+  const amzForward = simulateAmazonForward();
+
+  // Merge: history is shared; forward diverges
+  const wdsSeries = historyWhse.concat(wdsForward.slice(1));
+  const canopySeries = historyWhse.concat(canopyForward.slice(1));
+  const amzSeries = amzHistory.concat(amzForward.slice(1));
+
+  // Today index for marker
+  const todayIdx = PROJ_DAYS_BACK;
+
+  return { labels, dates, wdsSeries, canopySeries, amzSeries, todayIdx };
+}
+
+// =============================================================================
+// CHART RENDERERS
+// =============================================================================
+
+let charts = {};
+let currentScenarioIdx = 0;
+let heroView = 'both';
+
+function renderHero(s) {
+  const { labels, dates, wdsSeries, canopySeries, amzSeries, todayIdx } = generateProjection(s);
+  const el = document.getElementById('chart-runway');
+  if (!charts.hero) charts.hero = echarts.init(el);
+
+  const todayDate = labels[todayIdx];
+  const minThreshold = s.thresholds.min;
+  const maxThreshold = s.thresholds.max;
+
+  // Build series based on heroView toggle
+  const series = [];
+
+  // Amazon FC band (always visible)
+  series.push({
+    name: 'Amazon FC (translucent)',
+    type: 'line',
+    data: amzSeries.map((v, i) => [labels[i], v]),
+    smooth: false,
+    step: 'end',
+    symbol: 'none',
+    lineStyle: { color: 'rgba(245, 158, 11, 0.45)', width: 1 },
+    areaStyle: { color: 'rgba(245, 158, 11, 0.12)' },
+    z: 1,
+  });
+
+  // WDS warehouse line
+  if (heroView === 'wds' || heroView === 'both') {
+    series.push({
+      name: 'WDS · Warehouse',
+      type: 'line',
+      data: wdsSeries.map((v, i) => [labels[i], v]),
+      step: 'end',
+      smooth: false,
+      symbol: 'none',
+      lineStyle: { color: '#b45309', width: 2.2, type: 'solid' },
+      z: 3,
+      // Dash from today onward
+      itemStyle: { color: '#b45309' },
+    });
+  }
+
+  // Canopy warehouse line
+  if (heroView === 'canopy' || heroView === 'both') {
+    series.push({
+      name: 'Canopy · Warehouse',
+      type: 'line',
+      data: canopySeries.map((v, i) => [labels[i], v]),
+      step: 'end',
+      smooth: false,
+      symbol: 'none',
+      lineStyle: { color: '#0f766e', width: 2.4, type: 'solid' },
+      z: 4,
+    });
+  }
+
+  charts.hero.setOption({
+    animation: true,
+    animationDuration: 600,
+    animationEasing: 'cubicOut',
+    grid: { left: 56, right: 80, top: 24, bottom: 40 },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'line', lineStyle: { color: 'rgba(28,25,23,0.3)', type: 'dashed' } },
+      backgroundColor: '#ffffff',
+      borderColor: '#e7e5e4',
+      borderWidth: 1,
+      textStyle: { color: '#1c1917', fontFamily: 'Geist', fontSize: 12 },
+      padding: [8, 12],
+      formatter: (params) => {
+        if (!params || !params.length) return '';
+        const date = new Date(params[0].axisValue);
+        const dateStr = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        let lines = `<div style="font-weight:600;margin-bottom:4px">${dateStr}</div>`;
+        params.forEach((p) => {
+          if (!p.seriesName.includes('translucent')) {
+            const sw = `<span style="display:inline-block;width:8px;height:8px;background:${p.color};border-radius:2px;margin-right:6px"></span>`;
+            lines += `<div style="display:flex;justify-content:space-between;gap:20px"><span>${sw}${p.seriesName}</span><b style="font-variant-numeric:tabular-nums">${(p.value[1] || 0).toLocaleString()}</b></div>`;
+          } else {
+            const sw = `<span style="display:inline-block;width:8px;height:8px;background:${p.color};border-radius:2px;margin-right:6px"></span>`;
+            lines += `<div style="display:flex;justify-content:space-between;gap:20px;color:#78716c"><span>${sw}Amazon FC</span><b style="font-variant-numeric:tabular-nums">${(p.value[1] || 0).toLocaleString()}</b></div>`;
+          }
+        });
+        return lines;
+      },
+    },
+    legend: {
+      data: series.filter((sr) => !sr.name.includes('translucent')).map((sr) => sr.name).concat(['Amazon FC']),
+      bottom: 4,
+      icon: 'roundRect',
+      itemWidth: 12,
+      itemHeight: 8,
+      textStyle: { color: '#57534e', fontFamily: 'Geist', fontSize: 12 },
+    },
+    xAxis: {
+      type: 'category',
+      data: labels,
+      axisLabel: {
+        color: '#78716c',
+        fontFamily: 'Geist',
+        fontSize: 11,
+        formatter: (val) => {
+          const d = new Date(val);
+          return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        },
+        showMaxLabel: true,
+      },
+      axisLine: { lineStyle: { color: '#d6d3d1' } },
+      splitLine: { show: false },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value',
+      name: 'Units on hand',
+      nameTextStyle: { color: '#78716c', fontFamily: 'Geist', fontSize: 11, padding: [0, 0, 8, 0] },
+      axisLabel: {
+        color: '#78716c',
+        fontFamily: 'Geist',
+        fontSize: 11,
+        formatter: (v) => v.toLocaleString(),
+      },
+      splitLine: { lineStyle: { color: '#f0efed', type: 'dashed' } },
+      axisLine: { show: false },
+      axisTick: { show: false },
+    },
+    series: [
+      ...series,
+      // Threshold lines
+      {
+        name: 'Min / Max',
+        type: 'line',
+        data: [],
+        markLine: {
+          symbol: 'none',
+          silent: true,
+          lineStyle: { type: 'dashed', color: '#a8a29e', width: 1 },
+          label: { color: '#78716c', fontFamily: 'Geist', fontSize: 10, position: 'insideEndTop' },
+          data: [
+            { yAxis: minThreshold, name: `Min ${minThreshold}` },
+            { yAxis: maxThreshold, name: `Max ${maxThreshold}` },
+          ],
+        },
+      },
+      // Today marker
+      {
+        type: 'line',
+        data: [],
+        markLine: {
+          symbol: 'none',
+          silent: true,
+          lineStyle: { type: 'dashed', color: '#1c1917', width: 1 },
+          label: { color: '#1c1917', fontFamily: 'Geist', fontSize: 10, position: 'insideStartTop', formatter: 'Today' },
+          data: [{ xAxis: todayDate }],
+        },
+      },
+    ],
+  }, true);
+}
+
+function renderChannels(s) {
+  const el = document.getElementById('chart-channels');
+  if (!charts.channels) charts.channels = echarts.init(el);
+  const data = [
+    { name: 'Amazon 1P', value: s.channelMix.amazon_1p, itemStyle: { color: '#0891b2' } },
+    { name: 'Amazon DF', value: s.channelMix.amazon_df, itemStyle: { color: '#06b6d4' } },
+    { name: 'Amazon DI', value: s.channelMix.amazon_di, itemStyle: { color: '#67e8f9' } },
+    { name: 'Domestic', value: s.channelMix.domestic, itemStyle: { color: '#1e293b' } },
+  ].filter((d) => d.value > 0);
+
+  charts.channels.setOption({
+    animationDuration: 600,
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: '#ffffff',
+      borderColor: '#e7e5e4',
+      borderWidth: 1,
+      textStyle: { color: '#1c1917', fontFamily: 'Geist', fontSize: 12 },
+      formatter: (p) => `<b>${p.name}</b><br/>${(p.value * 100).toFixed(0)}% of demand`,
+    },
+    legend: {
+      orient: 'vertical',
+      right: 16,
+      top: 'middle',
+      icon: 'roundRect',
+      itemWidth: 10,
+      itemHeight: 10,
+      textStyle: { color: '#57534e', fontFamily: 'Geist', fontSize: 12 },
+    },
+    series: [
+      {
+        type: 'pie',
+        radius: ['52%', '76%'],
+        center: ['38%', '50%'],
+        data,
+        avoidLabelOverlap: true,
+        label: { show: false },
+        labelLine: { show: false },
+        itemStyle: { borderColor: '#ffffff', borderWidth: 2, borderRadius: 3 },
+      },
+    ],
+    graphic: [
+      {
+        type: 'text',
+        left: '38%',
+        top: '50%',
+        style: {
+          text: 'Demand\nportfolio',
+          textAlign: 'center',
+          textVerticalAlign: 'middle',
+          fontFamily: 'Geist',
+          fontSize: 13,
+          fontWeight: 500,
+          fill: '#57534e',
+        },
+        z: 100,
+      },
+    ],
+  }, true);
+}
+
+function renderDOI(s) {
+  const el = document.getElementById('chart-doi');
+  if (!charts.doi) charts.doi = echarts.init(el);
+
+  if (s.amzDoi.status === 'na') {
+    charts.doi.setOption({
+      graphic: [
+        {
+          type: 'text',
+          left: 'center',
+          top: 'middle',
+          style: {
+            text: 'No Amazon DOI signal\n(this SKU has no Amazon FC presence)',
+            textAlign: 'center',
+            fontFamily: 'Geist',
+            fontSize: 13,
+            fill: '#a8a29e',
+          },
+        },
+      ],
+      series: [],
+    }, true);
+    return;
+  }
+
+  const current = s.amzDoi.current;
+  const target = s.amzDoi.target;
+  const max = Math.max(120, target * 1.5);
+  const ratio = current / max;
+  const status = current < target * 0.6 ? 'critical' : current < target ? 'warn' : 'safe';
+  const colorMap = { critical: '#b91c1c', warn: '#b45309', safe: '#15803d' };
+
+  charts.doi.setOption({
+    animationDuration: 600,
+    series: [
+      {
+        type: 'gauge',
+        center: ['50%', '60%'],
+        radius: '90%',
+        startAngle: 200,
+        endAngle: -20,
+        min: 0,
+        max,
+        axisLine: {
+          lineStyle: {
+            width: 18,
+            color: [
+              [target * 0.6 / max, '#fee2e2'],
+              [target / max, '#fef3c7'],
+              [1, '#dcfce7'],
+            ],
+          },
+        },
+        progress: { show: true, width: 18, itemStyle: { color: colorMap[status] } },
+        pointer: { length: '60%', width: 4, itemStyle: { color: '#1c1917' } },
+        axisTick: { show: false },
+        splitLine: { show: false },
+        axisLabel: {
+          color: '#78716c',
+          fontFamily: 'Geist',
+          fontSize: 10,
+          distance: 22,
+          formatter: (v) => (v % 30 === 0 ? `${v}d` : ''),
+        },
+        anchor: { show: true, size: 8, itemStyle: { color: '#1c1917' } },
+        title: { show: false },
+        detail: {
+          valueAnimation: true,
+          fontFamily: 'Geist',
+          fontSize: 30,
+          fontWeight: 600,
+          color: '#1c1917',
+          offsetCenter: [0, '14%'],
+          formatter: (v) => `${Math.round(v)}d`,
+        },
+        data: [{ value: current }],
+      },
+    ],
+    graphic: [
+      {
+        type: 'text',
+        left: 'center',
+        top: '85%',
+        style: {
+          text: `Tier target: ${target} days`,
+          textAlign: 'center',
+          fontFamily: 'Geist',
+          fontSize: 12,
+          fill: '#57534e',
+        },
+      },
+    ],
+  }, true);
+}
+
+function renderFormula(s) {
+  const el = document.getElementById('chart-formula');
+  if (!charts.formula) charts.formula = echarts.init(el);
+
+  const wdsBars = s.formula.wds.components.map((c) => c.qty);
+  const wdsLabels = s.formula.wds.components.map((c) => c.label);
+  const canopyBars = s.formula.canopy.components.map((c) => c.qty);
+  const canopyLabels = s.formula.canopy.components.map((c) => c.label);
+
+  // Stacked horizontal bars: WDS row (1 segment) + Canopy row (N segments)
+  // Use one series per component, stacked by row.
+
+  const allLabels = Array.from(new Set([...wdsLabels, ...canopyLabels]));
+  const colorPalette = ['#0f766e', '#14b8a6', '#5eead4', '#a8a29e', '#fda4af'];
+
+  const series = allLabels.map((label, i) => {
+    const wdsQty = (s.formula.wds.components.find((c) => c.label === label) || {}).qty || 0;
+    const canopyQty = (s.formula.canopy.components.find((c) => c.label === label) || {}).qty || 0;
+    return {
+      name: label,
+      type: 'bar',
+      stack: 'total',
+      barWidth: 32,
+      data: [wdsQty, canopyQty],
+      itemStyle: { color: colorPalette[i % colorPalette.length], borderRadius: i === 0 ? [4, 0, 0, 4] : 0 },
+      label: {
+        show: false,
+      },
+    };
+  });
+
+  charts.formula.setOption({
+    animationDuration: 600,
+    grid: { left: 90, right: 80, top: 24, bottom: 40 },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      backgroundColor: '#ffffff',
+      borderColor: '#e7e5e4',
+      borderWidth: 1,
+      textStyle: { color: '#1c1917', fontFamily: 'Geist', fontSize: 12 },
+      formatter: (params) => {
+        if (!params || !params.length) return '';
+        const row = params[0].axisValue;
+        let total = 0;
+        let lines = `<div style="font-weight:600;margin-bottom:4px">${row}</div>`;
+        params.forEach((p) => {
+          if (Math.abs(p.value) < 1) return;
+          total += p.value;
+          const sw = `<span style="display:inline-block;width:8px;height:8px;background:${p.color};border-radius:2px;margin-right:6px"></span>`;
+          lines += `<div style="display:flex;justify-content:space-between;gap:24px"><span>${sw}${p.seriesName}</span><b style="font-variant-numeric:tabular-nums">${p.value.toLocaleString()}</b></div>`;
+        });
+        lines += `<div style="border-top:1px solid #e7e5e4;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;gap:24px"><span><b>Total</b></span><b style="font-variant-numeric:tabular-nums">${total.toLocaleString()}</b></div>`;
+        return lines;
+      },
+    },
+    legend: {
+      bottom: 0,
+      icon: 'roundRect',
+      itemWidth: 10,
+      itemHeight: 10,
+      textStyle: { color: '#57534e', fontFamily: 'Geist', fontSize: 11 },
+    },
+    xAxis: {
+      type: 'value',
+      axisLabel: {
+        color: '#78716c',
+        fontFamily: 'Geist',
+        fontSize: 11,
+        formatter: (v) => v.toLocaleString(),
+      },
+      splitLine: { lineStyle: { color: '#f0efed' } },
+      axisLine: { show: false },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'category',
+      data: ['WDS', 'Canopy'],
+      axisLabel: {
+        color: '#1c1917',
+        fontFamily: 'Geist',
+        fontSize: 13,
+        fontWeight: 600,
+      },
+      axisLine: { lineStyle: { color: '#d6d3d1' } },
+      axisTick: { show: false },
+    },
+    series,
+  }, true);
+}
+
+function renderTiming(s) {
+  const el = document.getElementById('chart-timing');
+  if (!charts.timing) charts.timing = echarts.init(el);
+
+  const wdsTrigger = s.reorderTrigger.wdsDaysOut;
+  const canopyTrigger = s.reorderTrigger.canopyDaysOut;
+  const leadDays = s.sku.leadDays;
+  const wdsArrive = wdsTrigger + leadDays;
+  const canopyArrive = canopyTrigger + leadDays;
+
+  // Build a swimlane: 2 lanes (Canopy/WDS), one bar per lane = lead-time window
+  charts.timing.setOption({
+    animationDuration: 600,
+    grid: { left: 76, right: 24, top: 24, bottom: 40 },
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: '#ffffff',
+      borderColor: '#e7e5e4',
+      borderWidth: 1,
+      textStyle: { color: '#1c1917', fontFamily: 'Geist', fontSize: 12 },
+      formatter: (p) => {
+        const trigger = p.data[1] === 0 ? canopyTrigger : wdsTrigger;
+        const arrive = p.data[1] === 0 ? canopyArrive : wdsArrive;
+        return `<b>${p.data[1] === 0 ? 'Canopy' : 'WDS'}</b><br/>Trigger: day +${trigger}<br/>PO arrives: day +${arrive}<br/>Lead time: ${leadDays}d`;
+      },
+    },
+    xAxis: {
+      type: 'value',
+      min: 0,
+      max: 365,
+      axisLabel: {
+        color: '#78716c',
+        fontFamily: 'Geist',
+        fontSize: 11,
+        formatter: (v) => v === 0 ? 'Today' : `+${v}d`,
+      },
+      splitLine: { lineStyle: { color: '#f0efed' } },
+      axisLine: { show: false },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'category',
+      data: ['WDS', 'Canopy'],
+      axisLabel: {
+        color: '#1c1917',
+        fontFamily: 'Geist',
+        fontSize: 13,
+        fontWeight: 600,
+      },
+      axisLine: { lineStyle: { color: '#d6d3d1' } },
+      axisTick: { show: false },
+    },
+    series: [
+      // Canopy: trigger->arrival
+      {
+        type: 'custom',
+        renderItem: (params, api) => {
+          const cat = api.value(0);
+          const trigger = api.value(1);
+          const arrive = api.value(2);
+          const color = api.value(3);
+          const start = api.coord([trigger, cat]);
+          const end = api.coord([arrive, cat]);
+          return {
+            type: 'group',
+            children: [
+              // Trigger marker
+              {
+                type: 'circle',
+                shape: { cx: start[0], cy: start[1], r: 6 },
+                style: { fill: color, stroke: '#ffffff', lineWidth: 2 },
+              },
+              // Lead-time bar
+              {
+                type: 'rect',
+                shape: { x: start[0], y: start[1] - 6, width: end[0] - start[0], height: 12 },
+                style: { fill: color, opacity: 0.25 },
+              },
+              // Arrival marker
+              {
+                type: 'circle',
+                shape: { cx: end[0], cy: end[1], r: 5 },
+                style: { fill: '#ffffff', stroke: color, lineWidth: 2 },
+              },
+            ],
+          };
+        },
+        data: [
+          [0, canopyTrigger, canopyArrive, '#0f766e'],
+          [1, wdsTrigger, wdsArrive, '#b45309'],
+        ],
+        encode: { x: [1, 2], y: 0 },
+      },
+    ],
+  }, true);
+}
+
+// =============================================================================
+// SCENARIO CHIPS + ORCHESTRATION
+// =============================================================================
+
+function renderBrief(s) {
+  document.getElementById('brief-title').textContent = s.title;
+  document.getElementById('brief-text').textContent = s.summary;
+  document.getElementById('brief-sku').textContent = s.sku.code;
+  document.getElementById('brief-tier').textContent = `Tier ${s.sku.tier}`;
+  document.getElementById('brief-lt').textContent = `${s.sku.leadDays}d`;
+
+  const wdsTotal = s.formula.wds.total;
+  const canopyTotal = s.formula.canopy.total;
+  const delta = canopyTotal - wdsTotal;
+  document.getElementById('verdict-wds').innerHTML = `${wdsTotal.toLocaleString()} <span class="small">units</span>`;
+  document.getElementById('verdict-canopy').innerHTML = `${canopyTotal.toLocaleString()} <span class="small">units</span>`;
+
+  const wdsTriggerDate = new Date();
+  wdsTriggerDate.setDate(wdsTriggerDate.getDate() + s.reorderTrigger.wdsDaysOut);
+  const canopyTriggerDate = new Date();
+  canopyTriggerDate.setDate(canopyTriggerDate.getDate() + s.reorderTrigger.canopyDaysOut);
+  const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+  document.getElementById('verdict-wds-delta').textContent =
+    `Reorder triggers ${s.reorderTrigger.wdsDaysOut}d out (${fmt(wdsTriggerDate)})`;
+  const deltaSign = delta >= 0 ? '+' : '';
+  const earlyDays = s.reorderTrigger.wdsDaysOut - s.reorderTrigger.canopyDaysOut;
+  document.getElementById('verdict-canopy-delta').textContent =
+    `${deltaSign}${delta.toLocaleString()} vs WDS · triggers ${earlyDays}d earlier (${fmt(canopyTriggerDate)})`;
+}
+
+function renderAll(idx) {
+  currentScenarioIdx = idx;
+  const s = SCENARIOS[idx];
+  renderBrief(s);
+  renderHero(s);
+  renderChannels(s);
+  renderDOI(s);
+  renderFormula(s);
+  renderTiming(s);
+}
+
+function buildChips() {
+  const nav = document.getElementById('scenarios');
+  SCENARIOS.forEach((s, idx) => {
+    const btn = document.createElement('button');
+    btn.innerHTML = `<span class="label">${s.label}</span><span class="meta">${s.meta}</span>`;
+    btn.dataset.idx = idx;
+    if (idx === 0) btn.classList.add('active');
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#scenarios button').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderAll(idx);
+    });
+    nav.appendChild(btn);
+  });
+}
+
+function bindHeroToggle() {
+  document.querySelectorAll('#hero-toggle button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#hero-toggle button').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      heroView = btn.dataset.view;
+      renderHero(SCENARIOS[currentScenarioIdx]);
+    });
+  });
+}
+
+window.addEventListener('resize', () => {
+  Object.values(charts).forEach((c) => c && c.resize());
+});
+
+// Boot
+buildChips();
+bindHeroToggle();
+renderAll(0);
+</script>
+</body>
+</html>
