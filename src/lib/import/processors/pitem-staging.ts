@@ -522,7 +522,9 @@ async function writeFromPayload(
           actualArrivalDate: po.actualArrivalDate ? new Date(po.actualArrivalDate) : null,
           vendorNum: po.vendorNum,
           vendorName: po.vendorName,
-          lotNumber: po.lotNumber,
+          // lotNumber intentionally excluded — lot_number has a @unique constraint and
+          // is owned by the porder-recent.json / Excel PO-header import path.
+          // pitem.json is authoritative for line composition, not PO header identity.
         };
 
         const upsertedPo = existing
