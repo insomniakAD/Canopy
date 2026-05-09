@@ -24,13 +24,45 @@ import {
 } from "@/lib/blob/registry";
 import { parseOitemMonthlyBlob } from "@/lib/import/processors/blob-monthly-sales";
 import { parseBlobPurchaseOrders } from "@/lib/import/processors/blob-purchase-orders";
+import { pitemStaging } from "@/lib/import/processors/pitem-staging";
+import { parthistDailyStaging } from "@/lib/import/processors/parthist-daily-staging";
 import { commitStaged, cancelStaged } from "@/lib/import/staging/orchestrator";
 import { runSharedGates, mergeGates } from "@/lib/import/staging/gates";
 import { computeMonthlySalesDiff } from "@/lib/import/processors/wds-monthly-sales-staging";
 import { computePurchaseOrdersDiff } from "@/lib/import/processors/purchase-orders-staging";
 import { createHash } from "crypto";
 import type { PrismaClient } from "@/generated/prisma/client";
-import type { ParseResult, DiffSummary, StagedPayloadEnvelope } from "@/lib/import/staging/types";
+import type {
+  ParseResult,
+  DiffSummary,
+  StagedPayloadEnvelope,
+  ProcessorInput,
+} from "@/lib/import/staging/types";
+import type { BlobTable } from "@/lib/blob/source";
+
+// Convert Golf's columnar `{fields, rows}` blob shape into the array-of-objects
+// shape that buffer-parsing processors (pitem, parthist-daily) consume.
+function blobToRecords(blob: BlobTable): Record<string, unknown>[] {
+  return blob.rows.map((row) => {
+    const obj: Record<string, unknown> = {};
+    for (let i = 0; i < blob.fields.length; i++) {
+      obj[blob.fields[i]] = row[i];
+    }
+    return obj;
+  });
+}
+
+function syntheticInput(records: unknown[], fileName: string): ProcessorInput {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return {
+    buffer: Buffer.from(JSON.stringify(records)),
+    fileName,
+    headers: [],
+    rows: [],
+    today,
+  };
+}
 
 // ----------------------------------------------------------------------------
 // Per-source dispatchers
@@ -69,6 +101,28 @@ function dispatcherFor(source: BlobSourceDefinition): SourceDispatcher {
         },
         computeDiff: (d, payload) =>
           computePurchaseOrdersDiff(d, payload as Parameters<typeof computePurchaseOrdersDiff>[1]),
+      };
+
+    case "pitem":
+      return {
+        fetchAndParse: async (d) => {
+          const blob = await fetchBlobJson(source.pathnames[0]);
+          const records = blobToRecords(blob);
+          return pitemStaging.parseToPayload(d, syntheticInput(records, source.pathnames[0]));
+        },
+        computeDiff: (d, payload) =>
+          pitemStaging.computeDiff(d, payload as Parameters<typeof pitemStaging.computeDiff>[1]),
+      };
+
+    case "parthist-daily":
+      return {
+        fetchAndParse: async (d) => {
+          const blob = await fetchBlobJson(source.pathnames[0]);
+          const records = blobToRecords(blob);
+          return parthistDailyStaging.parseToPayload(d, syntheticInput(records, source.pathnames[0]));
+        },
+        computeDiff: (d, payload) =>
+          parthistDailyStaging.computeDiff(d, payload as Parameters<typeof parthistDailyStaging.computeDiff>[1]),
       };
   }
 }

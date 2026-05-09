@@ -7,26 +7,18 @@ import { FileUploader } from "@/components/file-uploader";
 const IMPORT_STEPS = [
   {
     number: 1,
-    label: "WDS Inventory",
-    description: "Current stock levels from Woodinville warehouse",
+    label: "Sales & Forecast",
+    description: "Amazon Sales Diagnostic, Amazon Forecasting, Amazon Vendor Central",
     requiredTypes: [] as string[],
-    completionTypes: ["wds_inventory"],
+    completionTypes: ["amazon_sales", "amazon_forecast", "amazon_vendor_central"],
     optional: false,
   },
   {
     number: 2,
-    label: "Sales & Forecast Data",
-    description: "WDS Monthly Sales (Revenue + Cartons), Amazon Sales, Amazon Forecast, Amazon Vendor Central",
+    label: "DI Orders",
+    description: "Amazon Direct Import orders",
     requiredTypes: [] as string[],
-    completionTypes: ["wds_monthly_sales", "wds_monthly_cartons", "amazon_sales", "amazon_forecast", "amazon_vendor_central"],
-    optional: false,
-  },
-  {
-    number: 3,
-    label: "Purchase Orders & DI Orders",
-    description: "Winsome POs and Amazon Direct Import orders",
-    requiredTypes: [] as string[],
-    completionTypes: ["purchase_orders", "di_orders"],
+    completionTypes: ["di_orders"],
     optional: false,
   },
 ] as const;

@@ -10,15 +10,10 @@ type ImportTypeOption = {
 };
 
 const DEFAULT_IMPORT_TYPES: readonly ImportTypeOption[] = [
-  { value: "wds_inventory",         label: "WDS Inventory",                      requires: [] },
-  { value: "wds_monthly_sales",     label: "WDS Monthly Sales — Revenue",   requires: [] },
-  { value: "wds_monthly_cartons",   label: "WDS Monthly Sales — Cartons",   requires: [] },
-  { value: "amazon_sales",          label: "Amazon Sales Diagnostic",            requires: [] },
-  { value: "amazon_vendor_central", label: "Amazon Vendor Central",      requires: [] },
-  { value: "amazon_forecast",       label: "Amazon Forecasting",         requires: [] },
-  { value: "purchase_orders",       label: "Purchase Orders",            requires: [] },
-  { value: "di_orders",             label: "Amazon DI Orders",           requires: [] },
-  { value: "item_update",           label: "Item Update",                requires: [] },
+  { value: "amazon_sales",          label: "Amazon Sales Diagnostic", requires: [] },
+  { value: "amazon_vendor_central", label: "Amazon Vendor Central",   requires: [] },
+  { value: "amazon_forecast",       label: "Amazon Forecasting",      requires: [] },
+  { value: "di_orders",             label: "Amazon DI Orders",        requires: [] },
 ] as const;
 
 function isTypeEnabled(t: ImportTypeOption, completedTypes: string[]): boolean {

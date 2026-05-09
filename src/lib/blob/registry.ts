@@ -10,7 +10,11 @@
 
 import type { ImportType } from "@/generated/prisma/client";
 
-export type BlobSourceKey = "oitem-monthly" | "purchase-orders";
+export type BlobSourceKey =
+  | "oitem-monthly"
+  | "purchase-orders"
+  | "pitem"
+  | "parthist-daily";
 
 export type BlobSourceDefinition = {
   key: BlobSourceKey;
@@ -40,6 +44,25 @@ export const BLOB_REGISTRY: Record<BlobSourceKey, BlobSourceDefinition> = {
       "dates, total cost) with cont-det.json (line items: SKU + qty per PO). " +
       "Closed POs are imported as 'received' for audit; open POs as 'ordered'.",
     importType: "purchase_orders",
+  },
+  "pitem": {
+    key: "pitem",
+    pathnames: ["pitem.json"],
+    label: "WDS PO Line Items",
+    description:
+      "Authoritative PO line composition from WDS. Per-line ETD/ETA, " +
+      "qty ordered/received/cancelled/remaining, factory + warehouse " +
+      "vs. Amazon DI flag. Replaces porder + cont-det for per-SKU views.",
+    importType: "wds_pitem",
+  },
+  "parthist-daily": {
+    key: "parthist-daily",
+    pathnames: ["parthist-daily.json"],
+    label: "WDS Daily Inventory",
+    description:
+      "Per-SKU daily warehouse on-hand snapshots from WDS. Weekday-only " +
+      "history starting 2025-06-23 for ~700 EDI-feed SKUs. LOC 1 only.",
+    importType: "wds_parthist_daily",
   },
 };
 

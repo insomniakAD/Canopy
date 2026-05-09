@@ -15,7 +15,7 @@ const PURCHASING_ITEMS = [
 ];
 
 const DATA_ITEMS = [
-  { href: "/import", label: "Import Data", icon: "upload" },
+  { href: "/import", label: "Import Amazon Data", icon: "upload" },
   { href: "/reports", label: "Leadership View", icon: "chart" },
   { href: "/admin", label: "Admin", icon: "shield" },
 ];

@@ -70,7 +70,7 @@ export function RunEngineButton({ missingReports = [] }: { missingReports?: stri
         <div className="mt-2 text-xs text-[var(--c-text-secondary)] max-w-xs">
           <span className="font-medium text-[var(--c-warning-text)]">Missing data \u2014</span>{" "}
           upload these on the{" "}
-          <a href="/import" className="text-[var(--c-accent)] hover:underline">Import Data</a>{" "}
+          <a href="/import" className="text-[var(--c-accent)] hover:underline">Import Amazon Data</a>{" "}
           page first:{" "}
           {missingReports.map((r) => REPORT_LABELS[r] ?? r).join(", ")}.
         </div>

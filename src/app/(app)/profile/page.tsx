@@ -13,7 +13,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 const DEFAULT_VIEW_OPTIONS = [
   { value: "/", label: "Dashboard" },
-  { value: "/import", label: "Import Data" },
+  { value: "/import", label: "Import Amazon Data" },
   { value: "/skus", label: "SKU Planning" },
   { value: "/amazon-doi", label: "Amazon DOI" },
   { value: "/tiers", label: "Tier Uploads" },

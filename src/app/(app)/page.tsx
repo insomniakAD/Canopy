@@ -571,7 +571,7 @@ function RecentImportsCard({
             })}
           </div>
           <Link href="/import" className="block text-xs text-[var(--c-accent)] hover:underline mt-3">
-            Go to Import Data &rarr;
+            Go to Import Amazon Data &rarr;
           </Link>
         </div>
       )}

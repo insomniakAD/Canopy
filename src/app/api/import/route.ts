@@ -18,15 +18,16 @@ import { usesStaging } from "@/lib/import/staging/registry";
 import { auth } from "@/auth";
 import type { ImportType } from "@/generated/prisma/client";
 
+// Manual-upload allowlist. WDS data (inventory, monthly sales, factory POs,
+// pitem, parthist-daily) flows through Admin → Live Sync now. Amazon types
+// stay here until Golf's Vendor Central API arrives. SKU-definition types
+// (active_items, item_update, kit_composition, asin_mapping) live under
+// /admin/uploads but share this endpoint.
 const VALID_IMPORT_TYPES: ImportType[] = [
   "wds_active_items",
-  "wds_inventory",
-  "wds_monthly_sales",
-  "wds_monthly_cartons",
   "amazon_sales",
   "amazon_vendor_central",
   "amazon_forecast",
-  "purchase_orders",
   "asin_mapping",
   "di_orders",
   "kit_composition",

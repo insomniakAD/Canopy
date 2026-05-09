@@ -23,7 +23,6 @@ const FRESHNESS_CATEGORIES = [
   {
     label: "Core",
     sources: [
-      { key: "wds_inventory", label: "WDS Inventory" },
       { key: "amazon_sales", label: "Amazon Sales Diagnostic" },
       { key: "amazon_vendor_central", label: "Amazon Vendor Central" },
       { key: "amazon_forecast", label: "Amazon Forecasting" },
@@ -32,15 +31,7 @@ const FRESHNESS_CATEGORIES = [
   {
     label: "Periodic",
     sources: [
-      { key: "wds_monthly_sales", label: "WDS Monthly Sales" },
-      { key: "purchase_orders", label: "Purchase Orders" },
       { key: "di_orders", label: "DI Orders" },
-    ],
-  },
-  {
-    label: "As-needed",
-    sources: [
-      { key: "item_update", label: "Item Update" },
     ],
   },
 ] as const;
@@ -139,9 +130,14 @@ export default async function ImportPage({
 
   return (
     <div>
-      <PageHeader title="Import Data" />
+      <PageHeader title="Import Amazon Data" />
       <p className="text-sm text-[var(--c-text-tertiary)] mb-5">
-        Upload Excel or CSV files from WDS and Amazon to keep Canopy&apos;s data current.
+        Upload Amazon Vendor Central reports until Golf&apos;s API is wired in. WDS data
+        flows through{" "}
+        <a href="/admin/sync" className="text-[var(--c-accent)] hover:underline">
+          Admin → Live Sync
+        </a>
+        .
       </p>
 
       {showForbidden && (
@@ -197,26 +193,24 @@ export default async function ImportPage({
       <Card title="Supported File Types" className="mt-8 mb-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div>
-            <p className="font-medium text-[var(--c-text-primary)] mb-1">WDS Exports</p>
-            <ul className="space-y-1 text-[var(--c-text-secondary)]">
-              <li>&bull; <strong>WDS Inventory</strong> — Current stock levels by SKU</li>
-              <li>&bull; <strong>WDS Monthly Sales</strong> — Pivot table with SKUs as rows, months as columns</li>
-            </ul>
-          </div>
-          <div>
             <p className="font-medium text-[var(--c-text-primary)] mb-1">Amazon Reports</p>
             <ul className="space-y-1 text-[var(--c-text-secondary)]">
               <li>&bull; <strong>Sales Diagnostic</strong> — Shipped units and revenue by ASIN</li>
               <li>&bull; <strong>Vendor Central</strong> — Operational metrics (OOS%, fill rate)</li>
               <li>&bull; <strong>Forecasting</strong> — 48-week demand forecast by ASIN</li>
+              <li>&bull; <strong>DI Orders</strong> — Amazon Direct Import orders</li>
             </ul>
           </div>
           <div>
-            <p className="font-medium text-[var(--c-text-primary)] mb-1">Other</p>
-            <ul className="space-y-1 text-[var(--c-text-secondary)]">
-              <li>&bull; <strong>Purchase Orders</strong> — Open and historical POs from WDS</li>
-              <li>&bull; <strong>DI Orders</strong> — Amazon Direct Import orders</li>
-            </ul>
+            <p className="font-medium text-[var(--c-text-primary)] mb-1">Where other data lives</p>
+            <p className="text-[var(--c-text-secondary)]">
+              WDS data (inventory, monthly sales, factory POs, PO line items, daily
+              inventory) syncs nightly from Golf&apos;s Vercel Blob via{" "}
+              <a href="/admin/sync" className="text-[var(--c-accent)] hover:underline">
+                Admin → Live Sync
+              </a>
+              .
+            </p>
             <p className="text-xs text-[var(--c-text-tertiary)] mt-2">
               SKU definition uploads (Item Update, Kit Composition, ASIN Mapping) live under{" "}
               <a href="/admin/uploads" className="text-[var(--c-accent)] hover:underline">

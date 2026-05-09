@@ -310,10 +310,11 @@ export function SyncClient() {
             diff before anything is written to the database.
           </p>
           <p>
-            <span className="font-medium text-[var(--c-text-primary)]">WDS Monthly Sales — Cartons</span>
-            {" "}replaces the manual "WDS Monthly Sales (Cartons)" upload on the Import Data page.
-            The Import Data page continues to handle revenue, inventory, active items, and all Amazon data
-            until Golf adds those files here.
+            All WDS data flows through Live Sync now. The{" "}
+            <a href="/import" className="text-[var(--c-accent)] hover:underline">
+              Import Amazon Data
+            </a>{" "}
+            page handles only Amazon Vendor Central reports until Golf&apos;s API is wired in.
           </p>
           <p className="text-[var(--c-text-tertiary)] text-xs">
             Files are private — only Canopy (using Golf's token) can access them. The token is
